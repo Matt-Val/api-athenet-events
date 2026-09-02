@@ -33,6 +33,8 @@ public class Event {
     @Column(nullable = false)
     private String description;
 
+    // Opcional para mas caracteres en la descripcion
+    private String description_opt;
 
     // Guarda la URL de la imagen del evento
     // Imagen principal
@@ -44,11 +46,15 @@ public class Event {
     @Column(name = "photo_url")
     private List<String> photos = new ArrayList<>();
 
-    // Categoría del evento
+    
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private EventType category;
+    private EventType type;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private EventCategory category;
+    
     // Fecha del evento - Se guarda como LocalDate para no tener problemas de zona horaria.
     @Column(name = "event_date", nullable = false)
     private LocalDate eventDate;
@@ -57,7 +63,6 @@ public class Event {
     @Column(nullable = false)
     private EventStatus status;
     
-
     @Column(name = "is_official_flag", nullable = false)
     private boolean isOfficial;
 
