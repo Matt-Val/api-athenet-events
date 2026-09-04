@@ -1,12 +1,16 @@
 package com.athenet.events.service;
 
 import com.athenet.events.model.Event;
+import com.athenet.events.model.EventStatus;
 import com.athenet.events.repository.EventRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.util.List;
 
+@Service
 public class EventService {
     
     private final EventRepository eventRepository;
@@ -24,12 +28,25 @@ public class EventService {
         return eventRepository.findAll();
     }
 
-    public List<Event> getUpcomingEvents(int daysAhead) { 
-        // de la fecha - a 3 meses más - o 1 mes
-        LocalDate today = LocalDate.now();
-        LocalDate futureDate = today.plusDays(daysAhead);
+    public Page<Event> getUpcomingEvents(
+        int daysAhead,
+        EventStatus status,
+        Pageable pageable) {
 
-        return eventRepository.findByEventDateBetweenOrderByEventDateAsc(today, futureDate);
+            LocalDate today = LocalDate.now();
+            LocalDate futureDate = today.plusDays(daysAhead);
+
+            return eventRepository.findByStatusAndEventDateBetween(
+                status,
+                today,
+                futureDate,
+                pageable);
+        }
+
+    public Event getEventByInternalId(String internalId) { 
+        return eventRepository.findByInternalId(internalId)
+            .orElseThrow( () -> new RuntimeException ("Error: Evento no encontrado con ID: " + internalId));
+            
     }
 
     // ==========================================
