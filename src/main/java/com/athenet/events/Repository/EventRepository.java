@@ -1,15 +1,16 @@
-package com.athenet.events.Repository;
-
-import com.athenet.events.Model.Event;
-import com.athenet.events.Model.EventStatus;
+package com.athenet.events.repository;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+
+import com.athenet.events.model.Event;
+import com.athenet.events.model.EventStatus;
 
 @Repository
 public interface EventRepository extends JpaRepository<Event, Long> {
@@ -31,7 +32,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     */
 
     Optional<Event> findByInternalId(String internalId);
-    
+
     
 
     Page<Event> findByStatusAndEventDateBetween(
@@ -39,4 +40,6 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             LocalDate from,
             LocalDate to,
             Pageable pageable);
+
+    List<Event> findByEventDateBetweenOrderByEventDateAsc(LocalDate startDate, LocalDate endDate);
 }

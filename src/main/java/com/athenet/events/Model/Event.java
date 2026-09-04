@@ -1,4 +1,4 @@
-package com.athenet.events.Model;
+package com.athenet.events.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDate;
