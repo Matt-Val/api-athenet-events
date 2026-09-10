@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class EventService {
@@ -43,10 +44,14 @@ public class EventService {
                 pageable);
         }
 
-    public Event getEventByInternalId(String internalId) { 
+    public Event getEventByInternalId(String internalId) {
         return eventRepository.findByInternalId(internalId)
             .orElseThrow( () -> new RuntimeException ("Error: Evento no encontrado con ID: " + internalId));
-            
+
+    }
+
+    public Optional<Event> getNextEvent() {
+        return eventRepository.findFirstByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate.now());
     }
 
     // ==========================================

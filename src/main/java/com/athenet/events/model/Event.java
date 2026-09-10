@@ -68,10 +68,14 @@ public class Event {
 
     @Column(name = "organization_id", nullable = false)
     private Long organizationId;
+
+    // Lugar del evento (ciudad, país, etc.)
+    private String location;
     
     @Column(name = "team_one_id")
     private Long teamOneId;
 
     @Column(name = "team_two_id")
     private Long teamTwoId;
+    
 }

@@ -42,4 +42,6 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             Pageable pageable);
 
     List<Event> findByEventDateBetweenOrderByEventDateAsc(LocalDate startDate, LocalDate endDate);
+
+    Optional<Event> findFirstByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate date);
 }
