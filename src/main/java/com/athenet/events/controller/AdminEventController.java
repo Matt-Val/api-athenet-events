@@ -7,14 +7,22 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/admin/events")
 public class AdminEventController {
-    
+
     private final EventService eventService;
 
-    public AdminEventController(EventService eventService) { 
+    public AdminEventController(EventService eventService) {
         this.eventService = eventService;
+    }
+
+    // Endpoint para listar todos los eventos (incluye DRAFT/CANCELLED, no solo lo público)
+    @GetMapping
+    public ResponseEntity<List<Event>> getAllEvents() {
+        return ResponseEntity.ok(eventService.getAllEvents());
     }
 
     // Endpoint para crear un nuevo evento
