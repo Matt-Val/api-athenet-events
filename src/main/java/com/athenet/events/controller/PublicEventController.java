@@ -9,14 +9,22 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/public/events")
 public class PublicEventController {
 
     private final EventService eventService;
-    
+
     public PublicEventController(EventService eventService){
         this.eventService = eventService;
+    }
+
+    // Endpoint para listar los próximos eventos publicados, del más cercano al más lejano
+    @GetMapping
+    public ResponseEntity<List<Event>> getNextTenEvents() {
+        return ResponseEntity.ok(eventService.getNextTenEvents());
     }
 
     // Endpoint para el calendario

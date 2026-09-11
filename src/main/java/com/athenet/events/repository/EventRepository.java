@@ -44,4 +44,6 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     List<Event> findByEventDateBetweenOrderByEventDateAsc(LocalDate startDate, LocalDate endDate);
 
     Optional<Event> findFirstByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate date);
+
+    List<Event> findTop10ByStatusAndEventDateGreaterThanEqualOrderByEventDateAsc(EventStatus status, LocalDate date);
 }

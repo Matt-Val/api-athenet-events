@@ -54,6 +54,10 @@ public class EventService {
         return eventRepository.findFirstByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate.now());
     }
 
+    public List<Event> getNextTenEvents() {
+        return eventRepository.findTop10ByStatusAndEventDateGreaterThanEqualOrderByEventDateAsc(EventStatus.PUBLISHED, LocalDate.now());
+    }
+
     // ==========================================
     // VISTA ADMIN ORG (GESTION INTERNA)
     // ==========================================
