@@ -71,7 +71,11 @@ public class Event {
 
     // Lugar del evento (ciudad, país, etc.)
     private String location;
-    
+
+    // Address del evento (calle, número, etc.)
+    private String address;
+
+    // Equipos participantes (si aplica)
     @Column(name = "team_one_id")
     private Long teamOneId;
 
