@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Secretos locales de OAuth2 / Azure (tenant y client ID reales) - nunca se suben
+application-local.properties
+.env
+.env.local

@@ -1,0 +1,16 @@
+# Copia este archivo a application-local.properties (misma carpeta) y
+# reemplaza {tenantId} / {clientId} por los datos reales de la App
+# Registration de Athenet en Microsoft Entra ID.
+# NUNCA subas application-local.properties al repositorio.
+
+spring.security.oauth2.resourceserver.jwt.issuer-uri=https://login.microsoftonline.com/{tenantId}/v2.0
+
+spring.security.oauth2.resourceserver.jwt.audiences[0]={clientId}
+spring.security.oauth2.resourceserver.jwt.audiences[1]=api://{clientId}
+
+# --- Opcional / fallback ---
+# Solo si el App Registration emite tokens v1.0 (issuer sts.windows.net):
+# ese endpoint redirige (302) durante el autodescubrimiento y Spring Security
+# se niega a seguirlo por seguridad. jwk-set-uri evita el autodescubrimiento
+# apuntando directo al endpoint de llaves públicas:
+# spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://login.microsoftonline.com/{tenantId}/discovery/v2.0/keys
