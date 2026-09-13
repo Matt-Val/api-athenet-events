@@ -3,6 +3,7 @@ package com.athenet.events.controller;
 
 import com.athenet.events.model.Event;
 import com.athenet.events.service.EventService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,14 +28,14 @@ public class AdminEventController {
 
     // Endpoint para crear un nuevo evento
     @PostMapping
-    public ResponseEntity<Event> createEvent(@RequestBody Event event) { 
+    public ResponseEntity<Event> createEvent(@Valid @RequestBody Event event) {
         Event createdEvent = eventService.createEvent(event);
         return new ResponseEntity<>(createdEvent, HttpStatus.CREATED);
     }
 
     // Endpoint para actualizar un evento existente usando su ID
     @PutMapping("/{id}")
-    public ResponseEntity<Event> updateEvent(@PathVariable Long id, @RequestBody Event event) { 
+    public ResponseEntity<Event> updateEvent(@PathVariable Long id, @Valid @RequestBody Event event) {
         return ResponseEntity.ok(eventService.updateEvent(id, event));
     }
 

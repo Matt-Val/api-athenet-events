@@ -67,7 +67,10 @@ public class EventService {
     // ==========================================
 
     // Método para crear un nuevo evento
-    public Event createEvent(Event event) { 
+    public Event createEvent(Event event) {
+        // Ignora cualquier id que venga en el body: un create siempre es un insert nuevo,
+        // nunca debe pisar un evento existente por un id enviado por error.
+        event.setId(null);
         return eventRepository.save(event);
     }
 
@@ -102,12 +105,12 @@ public class EventService {
             existingEvent.setTeamTwoId(updatedEvent.getTeamTwoId());
 
             return eventRepository.save(existingEvent);
-        }).orElseThrow( () -> new RuntimeException("Error: Evento no encontrado con ID " + id));
+        }).orElseThrow(() -> new EventNotFoundException(id));
     }
 
-    public void deleteEvent(Long id) { 
-        if (!eventRepository.existsById(id)) { 
-            throw new RuntimeException("Error: El evento no está registrado");
+    public void deleteEvent(Long id) {
+        if (!eventRepository.existsById(id)) {
+            throw new EventNotFoundException(id);
         }
         eventRepository.deleteById(id);
     }

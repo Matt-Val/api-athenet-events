@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -18,11 +19,15 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -96,28 +101,98 @@ class SecurityConfigTest {
     void createEventWithJwtReachesController() throws Exception {
         when(eventService.createEvent(any(Event.class))).thenReturn(new Event());
 
-        // Event tiene @AllArgsConstructor con un campo primitivo (isOfficial), así que
-        // Jackson necesita un JSON completo para poder instanciarlo - un "{}" vacío
-        // falla en el parseo antes de llegar al controller.
-        String validEventJson = """
+        mockMvc.perform(post("/api/admin/events")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_EVENT_JSON))
+                .andExpect(status().isCreated());
+    }
+
+    // Event tiene @AllArgsConstructor con un campo primitivo (isOfficial), así que
+    // Jackson necesita un JSON completo para poder instanciarlo - un "{}" vacío
+    // falla en el parseo antes de llegar al controller.
+    private static final String VALID_EVENT_JSON = """
+            {
+              "internalId": "EVT-SEC-001",
+              "title": "Evento de prueba",
+              "description": "desc",
+              "coverImage": "https://ejemplo.com/imagen.jpg",
+              "type": "MEETING",
+              "category": "AJEDREZ",
+              "eventDate": "2026-12-01",
+              "status": "DRAFT",
+              "isOfficial": true,
+              "organizationId": 1
+            }
+            """;
+
+    @Test
+    void createEventWithInvalidPayloadReturns400() throws Exception {
+        String missingRequiredFields = """
                 {
-                  "internalId": "EVT-SEC-001",
-                  "title": "Evento de prueba",
-                  "description": "desc",
-                  "coverImage": "https://ejemplo.com/imagen.jpg",
-                  "type": "MEETING",
-                  "category": "AJEDREZ",
-                  "eventDate": "2026-12-01",
-                  "status": "DRAFT",
-                  "isOfficial": true,
-                  "organizationId": 1
+                  "title": "Evento incompleto"
                 }
                 """;
 
         mockMvc.perform(post("/api/admin/events")
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(validEventJson))
-                .andExpect(status().isCreated());
+                        .content(missingRequiredFields))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createEventWithDuplicateInternalIdReturns409() throws Exception {
+        when(eventService.createEvent(any(Event.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
+
+        mockMvc.perform(post("/api/admin/events")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_EVENT_JSON))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void updateEventWithJwtIsOk() throws Exception {
+        when(eventService.updateEvent(anyLong(), any(Event.class))).thenReturn(new Event());
+
+        mockMvc.perform(put("/api/admin/events/1")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_EVENT_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void updateEventNotFoundReturns404() throws Exception {
+        when(eventService.updateEvent(anyLong(), any(Event.class)))
+                .thenThrow(new EventNotFoundException(999L));
+
+        mockMvc.perform(put("/api/admin/events/999")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_EVENT_JSON))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteEventWithJwtIsNoContent() throws Exception {
+        mockMvc.perform(delete("/api/admin/events/1").with(jwt()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteEventNotFoundReturns404() throws Exception {
+        doThrow(new EventNotFoundException(999L)).when(eventService).deleteEvent(999L);
+
+        mockMvc.perform(delete("/api/admin/events/999").with(jwt()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteEventWithoutTokenIsUnauthorized() throws Exception {
+        mockMvc.perform(delete("/api/admin/events/1"))
+                .andExpect(status().isUnauthorized());
     }
 }

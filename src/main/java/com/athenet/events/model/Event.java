@@ -1,6 +1,8 @@
 package com.athenet.events.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,13 +26,16 @@ public class Event {
     private Long id;
 
     // Clave de negocio - ID que verá el usuario
+    @NotBlank
     @Column(name = "internal_id", nullable = false, unique = true)
     private String internalId;
 
     // Datos generales del evento
+    @NotBlank
     @Column(nullable = false)
     private String title;
 
+    @NotBlank
     @Column(nullable = false)
     private String description;
 
@@ -40,6 +45,7 @@ public class Event {
 
     // Guarda la URL de la imagen del evento
     // Imagen principal
+    @NotBlank
     @Column(name = "cover_image", nullable = false)
     private String coverImage;
 
@@ -49,26 +55,31 @@ public class Event {
     private List<String> photos = new ArrayList<>();
 
     
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EventType type;
 
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EventCategory category;
-    
+
     // Fecha del evento - Se guarda como LocalDate para no tener problemas de zona horaria.
+    @NotNull
     @Column(name = "event_date", nullable = false)
     private LocalDate eventDate;
 
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EventStatus status;
-    
+
     @JsonProperty("isOfficial")
     @Column(name = "is_official_flag", nullable = false)
     private boolean isOfficial;
 
+    @NotNull
     @Column(name = "organization_id", nullable = false)
     private Long organizationId;
 
