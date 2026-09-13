@@ -35,10 +35,9 @@ public class SecurityConfig {
 
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
-        // El frontend real de Athenet es Angular (no hay React/Vite en este repo),
-        // así que solo se habilita el puerto por defecto de Angular CLI.
+        // !!!REVISAR: Contempla frontends de administracion y publico
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(List.of("http://localhost:4200"));
+        cfg.setAllowedOrigins(List.of("http://localhost:5173"));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin"));
         cfg.setAllowCredentials(true);

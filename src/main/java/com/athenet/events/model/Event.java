@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -34,6 +35,7 @@ public class Event {
     private String description;
 
     // Opcional para mas caracteres en la descripcion
+    @Column(columnDefinition = "TEXT")
     private String description_opt;
 
     // Guarda la URL de la imagen del evento
@@ -63,6 +65,7 @@ public class Event {
     @Column(nullable = false)
     private EventStatus status;
     
+    @JsonProperty("isOfficial")
     @Column(name = "is_official_flag", nullable = false)
     private boolean isOfficial;
 

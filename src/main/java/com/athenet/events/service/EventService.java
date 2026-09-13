@@ -1,5 +1,6 @@
 package com.athenet.events.service;
 
+import com.athenet.events.exception.EventNotFoundException;
 import com.athenet.events.model.Event;
 import com.athenet.events.model.EventStatus;
 import com.athenet.events.repository.EventRepository;
@@ -29,6 +30,10 @@ public class EventService {
         return eventRepository.findAll();
     }
 
+    public List<Event> getAllPublishedEvents() {
+        return eventRepository.findByStatusOrderByEventDateAsc(EventStatus.PUBLISHED);
+    }
+
     public Page<Event> getUpcomingEvents(
         int daysAhead,
         EventStatus status,
@@ -46,12 +51,11 @@ public class EventService {
 
     public Event getEventByInternalId(String internalId) {
         return eventRepository.findByInternalId(internalId)
-            .orElseThrow( () -> new RuntimeException ("Error: Evento no encontrado con ID: " + internalId));
-
+            .orElseThrow(() -> new EventNotFoundException(internalId));
     }
 
     public Optional<Event> getNextEvent() {
-        return eventRepository.findFirstByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate.now());
+        return eventRepository.findFirstByStatusAndEventDateGreaterThanEqualOrderByEventDateAsc(EventStatus.PUBLISHED, LocalDate.now());
     }
 
     public List<Event> getNextTenEvents() {

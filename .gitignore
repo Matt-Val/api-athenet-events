@@ -36,3 +36,6 @@ build/
 application-local.properties
 .env
 .env.local
+
+# Script manual de seed local (correr en pgAdmin/psql) - no es parte del repo
+data.sql

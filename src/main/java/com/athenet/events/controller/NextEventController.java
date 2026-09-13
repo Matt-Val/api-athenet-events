@@ -1,6 +1,6 @@
 package com.athenet.events.controller;
 
-import com.athenet.events.dto.NextEventResponse;
+import com.athenet.events.model.Event;
 import com.athenet.events.service.EventService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,15 +16,9 @@ public class NextEventController {
     }
 
     @GetMapping("/next")
-    public ResponseEntity<NextEventResponse> getNextEvent() {
+    public ResponseEntity<Event> getNextEvent() {
         return eventService.getNextEvent()
-                .map(event -> ResponseEntity.ok(new NextEventResponse(
-                        event.getId(),
-                        event.getTitle(),
-                        event.getEventDate(),
-                        event.getLocation(),
-                        event.getCategory().name()
-                )))
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.noContent().build());
     }
 }
