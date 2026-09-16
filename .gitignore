@@ -39,3 +39,7 @@ application-local.properties
 
 # Script manual de seed local (correr en pgAdmin/psql) - no es parte del repo
 data.sql
+
+# Claves privadas SSH (EC2, etc.) - jamas deben subirse al repo
+*.pem
+*.key
