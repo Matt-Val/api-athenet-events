@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -25,6 +26,12 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    @Value("${app.cors.public-origins:http://localhost:5173,http://localhost:4200}")
+    private List<String> publicOrigins;
+
+    @Value("${app.cors.admin-origins:http://localhost:4200}")
+    private List<String> adminOrigins;
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -72,7 +79,7 @@ public class SecurityConfig {
 
         // Front público (Vite/React) y público de Angular - solo lectura GET, sin credenciales.
         CorsConfiguration publicCfg = new CorsConfiguration();
-        publicCfg.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:4200"));
+        publicCfg.setAllowedOrigins(publicOrigins);
         publicCfg.setAllowedMethods(List.of("GET", "OPTIONS"));
         publicCfg.setAllowedHeaders(List.of("Content-Type", "Accept", "Origin", "X-Requested-With"));
         publicCfg.setExposedHeaders(List.of("Link", "X-Total-Count"));
@@ -83,7 +90,7 @@ public class SecurityConfig {
 
         // Panel de administración (Angular) - CRUD completo, con credenciales.
         CorsConfiguration adminCfg = new CorsConfiguration();
-        adminCfg.setAllowedOrigins(List.of("http://localhost:4200"));
+        adminCfg.setAllowedOrigins(adminOrigins);
         adminCfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         adminCfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
         adminCfg.setExposedHeaders(List.of("Authorization", "Link", "X-Total-Count"));
