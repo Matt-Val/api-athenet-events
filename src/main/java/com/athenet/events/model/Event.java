@@ -40,8 +40,8 @@ public class Event {
     private String description;
 
     // Opcional para mas caracteres en la descripcion
-    @Column(columnDefinition = "TEXT")
-    private String description_opt;
+    @Column(name = "description_opt", columnDefinition = "TEXT")
+    private String descriptionOpt;
 
     // Guarda la URL de la imagen del evento
     // Imagen principal
@@ -49,7 +49,7 @@ public class Event {
     @Column(name = "cover_image", nullable = false)
     private String coverImage;
 
-    @ElementCollection(fetch = FetchType.LAZY) // Las fotos no se traen de la base hasta que alguien acceda.
+    @ElementCollection(fetch = FetchType.EAGER) // Se traen junto con el evento para evitar LazyInitializationException al serializar.
     @CollectionTable(name = "event_photos", joinColumns = @JoinColumn (name = "event_id")) // Apunta al evento.
     @Column(name = "photo_url")
     private List<String> photos = new ArrayList<>();

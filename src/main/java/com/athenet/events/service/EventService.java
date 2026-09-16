@@ -82,7 +82,7 @@ public class EventService {
             existingEvent.setInternalId(updatedEvent.getInternalId());
             existingEvent.setTitle(updatedEvent.getTitle());
             existingEvent.setDescription(updatedEvent.getDescription());
-            existingEvent.setDescription_opt(updatedEvent.getDescription_opt());
+            existingEvent.setDescriptionOpt(updatedEvent.getDescriptionOpt());
             
             // imagenes, tanto el cover como el arraylist de fotos
             existingEvent.setCoverImage(updatedEvent.getCoverImage());
