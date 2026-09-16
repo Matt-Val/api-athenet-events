@@ -11,6 +11,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -41,6 +42,8 @@ class SecurityConfigTest {
 
     @MockitoBean
     private EventService eventService;
+
+    private static final SimpleGrantedAuthority DIRECTOR_ROLE = new SimpleGrantedAuthority("ROLE_DIRECTOR");
 
     @Test
     void publicGetAllEventsWithoutTokenIsOk() throws Exception {
@@ -98,11 +101,20 @@ class SecurityConfigTest {
     }
 
     @Test
+    void createEventWithJwtWithoutDirectorRoleIsForbidden() throws Exception {
+        mockMvc.perform(post("/api/admin/events")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_EVENT_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void createEventWithJwtReachesController() throws Exception {
         when(eventService.createEvent(any(Event.class))).thenReturn(new Event());
 
         mockMvc.perform(post("/api/admin/events")
-                        .with(jwt())
+                        .with(jwt().authorities(DIRECTOR_ROLE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_EVENT_JSON))
                 .andExpect(status().isCreated());
@@ -135,7 +147,7 @@ class SecurityConfigTest {
                 """;
 
         mockMvc.perform(post("/api/admin/events")
-                        .with(jwt())
+                        .with(jwt().authorities(DIRECTOR_ROLE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(missingRequiredFields))
                 .andExpect(status().isBadRequest());
@@ -147,7 +159,7 @@ class SecurityConfigTest {
                 .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
 
         mockMvc.perform(post("/api/admin/events")
-                        .with(jwt())
+                        .with(jwt().authorities(DIRECTOR_ROLE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_EVENT_JSON))
                 .andExpect(status().isConflict());
@@ -158,7 +170,7 @@ class SecurityConfigTest {
         when(eventService.updateEvent(anyLong(), any(Event.class))).thenReturn(new Event());
 
         mockMvc.perform(put("/api/admin/events/1")
-                        .with(jwt())
+                        .with(jwt().authorities(DIRECTOR_ROLE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_EVENT_JSON))
                 .andExpect(status().isOk());
@@ -170,7 +182,7 @@ class SecurityConfigTest {
                 .thenThrow(new EventNotFoundException(999L));
 
         mockMvc.perform(put("/api/admin/events/999")
-                        .with(jwt())
+                        .with(jwt().authorities(DIRECTOR_ROLE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_EVENT_JSON))
                 .andExpect(status().isNotFound());
@@ -178,7 +190,7 @@ class SecurityConfigTest {
 
     @Test
     void deleteEventWithJwtIsNoContent() throws Exception {
-        mockMvc.perform(delete("/api/admin/events/1").with(jwt()))
+        mockMvc.perform(delete("/api/admin/events/1").with(jwt().authorities(DIRECTOR_ROLE)))
                 .andExpect(status().isNoContent());
     }
 
@@ -186,7 +198,7 @@ class SecurityConfigTest {
     void deleteEventNotFoundReturns404() throws Exception {
         doThrow(new EventNotFoundException(999L)).when(eventService).deleteEvent(999L);
 
-        mockMvc.perform(delete("/api/admin/events/999").with(jwt()))
+        mockMvc.perform(delete("/api/admin/events/999").with(jwt().authorities(DIRECTOR_ROLE)))
                 .andExpect(status().isNotFound());
     }
 
