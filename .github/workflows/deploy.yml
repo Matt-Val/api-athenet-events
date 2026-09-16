@@ -88,6 +88,8 @@ jobs:
               -e SPRING_DATASOURCE_USERNAME="${{ secrets.DB_USERNAME }}" \
               -e SPRING_DATASOURCE_PASSWORD="${{ secrets.DB_PASSWORD }}" \
               -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI="${{ secrets.JWT_ISSUER_URI }}" \
+              -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_0="${{ secrets.JWT_AUDIENCE }}" \
+              -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_1="api://${{ secrets.JWT_AUDIENCE }}" \
               ${{ needs.build-and-push.outputs.image }}:latest
 
             docker image prune -f
