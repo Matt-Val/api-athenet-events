@@ -2,8 +2,7 @@ name: Build, Push and Deploy
 
 on:
   push:
-    # TODO: sacar feature-inicializacion antes de la entrega, solo esta para probar el pipeline
-    branches: [ main, feature-inicializacion ]
+    branches: [ main ]
 
 jobs:
   test:
