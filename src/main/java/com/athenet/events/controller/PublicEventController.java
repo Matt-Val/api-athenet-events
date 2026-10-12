@@ -1,6 +1,6 @@
 package com.athenet.events.controller;
 
-import com.athenet.events.model.Event;
+import com.athenet.events.dto.EventResponse;
 import com.athenet.events.model.EventStatus;
 import com.athenet.events.service.EventService;
 import org.springframework.data.domain.Page;
@@ -23,19 +23,20 @@ public class PublicEventController {
 
     // Endpoint para listar todos los eventos publicados (catálogo de eventos)
     @GetMapping
-    public ResponseEntity<List<Event>> getAllPublishedEvents() {
+    public ResponseEntity<List<EventResponse>> getAllPublishedEvents() {
         return ResponseEntity.ok(eventService.getAllPublishedEvents());
     }
 
     // Endpoint para listar los próximos eventos publicados (Top 10, del más cercano al más lejano)
     @GetMapping("/next")
-    public ResponseEntity<List<Event>> getNextTenEvents() {
+    public ResponseEntity<List<EventResponse>> getNextTenEvents() {
         return ResponseEntity.ok(eventService.getNextTenEvents());
     }
 
-    // Endpoint para obtener el evento destacado / individual más próximo para el hero countdown
+    // Endpoint para obtener el evento destacado / individual más próximo para el hero countdown.
+    // Reemplaza al antiguo alias GET /api/events/next, que devolvía lo mismo.
     @GetMapping("/featured")
-    public ResponseEntity<Event> getFeaturedNextEvent() {
+    public ResponseEntity<EventResponse> getFeaturedNextEvent() {
         return eventService.getNextEvent()
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.noContent().build());
@@ -43,17 +44,17 @@ public class PublicEventController {
 
     // Endpoint para el calendario
     @GetMapping("/upcoming")
-    public ResponseEntity<Page<Event>> getUpcomingEvents(
+    public ResponseEntity<Page<EventResponse>> getUpcomingEvents(
             @RequestParam(defaultValue = "30", required = false) int daysAhead,
             @PageableDefault(size = 10, sort = "eventDate") Pageable pageable) {
         
-        Page<Event> eventsPage = eventService.getUpcomingEvents(daysAhead, EventStatus.PUBLISHED, pageable);
+        Page<EventResponse> eventsPage = eventService.getUpcomingEvents(daysAhead, EventStatus.PUBLISHED, pageable);
         return ResponseEntity.ok(eventsPage);
     }
 
     // Endpoint para ver el detalle de un evento específico usando su internalId
     @GetMapping("/{internalId}")
-    public ResponseEntity<Event> getEventByInternalId(@PathVariable String internalId) { 
+    public ResponseEntity<EventResponse> getEventByInternalId(@PathVariable String internalId) { 
         return ResponseEntity.ok(eventService.getEventByInternalId(internalId));
     }
 

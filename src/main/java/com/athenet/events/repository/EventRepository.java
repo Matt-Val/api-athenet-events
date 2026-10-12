@@ -33,19 +33,24 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     Optional<Event> findByInternalId(String internalId);
 
-    
+    boolean existsByInternalId(String internalId);
 
-    Page<Event> findByStatusAndEventDateBetween(
+    List<Event> findAllByOrderByEventDateAscStartTimeAsc();
+
+    List<Event> findByStatusOrderByEventDateAscStartTimeAsc(EventStatus status);
+
+    /**
+     * Calendario: eventos cuyo rango [eventDate, endDate] se cruza con [from, to].
+     * Así un evento de varios días que ya empezó sigue apareciendo mientras dure.
+     */
+    Page<Event> findByStatusAndEventDateLessThanEqualAndEndDateGreaterThanEqual(
             EventStatus status,
-            LocalDate from,
             LocalDate to,
+            LocalDate from,
             Pageable pageable);
 
-    List<Event> findByStatusOrderByEventDateAsc(EventStatus status);
+    // "Próximo" = el siguiente en empezar: alimenta la cuenta regresiva del sitio público.
+    Optional<Event> findFirstByStatusAndEventDateGreaterThanEqualOrderByEventDateAscStartTimeAsc(EventStatus status, LocalDate date);
 
-    Optional<Event> findFirstByStatusAndEventDateGreaterThanEqualOrderByEventDateAsc(EventStatus status, LocalDate date);
-
-    Optional<Event> findFirstByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate date);
-
-    List<Event> findTop10ByStatusAndEventDateGreaterThanEqualOrderByEventDateAsc(EventStatus status, LocalDate date);
+    List<Event> findTop10ByStatusAndEventDateGreaterThanEqualOrderByEventDateAscStartTimeAsc(EventStatus status, LocalDate date);
 }
