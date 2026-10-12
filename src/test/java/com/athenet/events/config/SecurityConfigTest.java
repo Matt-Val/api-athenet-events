@@ -2,14 +2,17 @@ package com.athenet.events.config;
 
 import com.athenet.events.controller.AdminEventController;
 import com.athenet.events.controller.PublicEventController;
-import com.athenet.events.model.Event;
-import com.athenet.events.service.EventService;
+import com.athenet.events.dto.EventRequest;
+import com.athenet.events.dto.EventResponse;
+import com.athenet.events.dto.EventTypeResponse;
 import com.athenet.events.exception.EventNotFoundException;
+import com.athenet.events.mapper.EventMapper;
+import com.athenet.events.service.EventService;
+import com.athenet.events.support.EventFixtures;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
@@ -20,10 +23,10 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -45,17 +48,23 @@ class SecurityConfigTest {
 
     private static final SimpleGrantedAuthority DIRECTOR_ROLE = new SimpleGrantedAuthority("ROLE_DIRECTOR");
 
+    private static final EventResponse MATCH =
+            new EventMapper().toResponse(new EventMapper().toEntity(EventFixtures.match()));
+
+    // ── Rutas públicas ───────────────────────────────────────────────────────
+
     @Test
     void publicGetAllEventsWithoutTokenIsOk() throws Exception {
-        when(eventService.getAllPublishedEvents()).thenReturn(List.of(new Event()));
+        when(eventService.getAllPublishedEvents()).thenReturn(List.of(MATCH));
 
         mockMvc.perform(get("/api/public/events"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].sportId").value(3));
     }
 
     @Test
     void publicGetNextEventsWithoutTokenIsOk() throws Exception {
-        when(eventService.getNextTenEvents()).thenReturn(List.of(new Event()));
+        when(eventService.getNextTenEvents()).thenReturn(List.of(MATCH));
 
         mockMvc.perform(get("/api/public/events/next"))
                 .andExpect(status().isOk());
@@ -63,22 +72,19 @@ class SecurityConfigTest {
 
     @Test
     void publicGetFeaturedEventWithoutTokenIsOk() throws Exception {
-        Event event = new Event();
-        event.setOfficial(true);
-        when(eventService.getNextEvent()).thenReturn(Optional.of(event));
+        when(eventService.getNextEvent()).thenReturn(Optional.of(MATCH));
 
         mockMvc.perform(get("/api/public/events/featured"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.isOfficial").value(true));
+                .andExpect(jsonPath("$.isOfficial").value(true))
+                .andExpect(jsonPath("$.startTime").value("22:00"));
     }
 
     @Test
     void publicEventDetailWithoutTokenIsOk() throws Exception {
-        Event event = new Event();
-        event.setOfficial(true);
-        when(eventService.getEventByInternalId(anyString())).thenReturn(event);
+        when(eventService.getEventByInternalId(anyString())).thenReturn(MATCH);
 
-        mockMvc.perform(get("/api/public/events/EVT-001"))
+        mockMvc.perform(get("/api/public/events/EVT-42"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isOfficial").value(true));
     }
@@ -93,118 +99,88 @@ class SecurityConfigTest {
     }
 
     @Test
-    void createEventWithoutTokenIsUnauthorized() throws Exception {
+    void theOldNextEventAliasNoLongerExists() throws Exception {
+        // GET /api/events/next se consolidó en /api/public/events/featured.
+        mockMvc.perform(get("/api/events/next")).andExpect(status().isUnauthorized());
+    }
+
+    // ── Rutas de administración (rol DIRECTOR) ────────────────────────────────
+
+    @Test
+    void adminRoutesWithoutTokenAreUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/admin/events")).andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/admin/events")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content(EventFixtures.MATCH_JSON))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/api/admin/events/EVT-42")).andExpect(status().isUnauthorized());
     }
 
     @Test
-    void createEventWithJwtWithoutDirectorRoleIsForbidden() throws Exception {
+    void adminRoutesWithJwtWithoutDirectorRoleAreForbidden() throws Exception {
         mockMvc.perform(post("/api/admin/events")
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(VALID_EVENT_JSON))
+                        .content(EventFixtures.MATCH_JSON))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/events/EVT-42").with(jwt()))
                 .andExpect(status().isForbidden());
     }
 
     @Test
-    void createEventWithJwtReachesController() throws Exception {
-        when(eventService.createEvent(any(Event.class))).thenReturn(new Event());
+    void eventTypesRequireDirectorRole() throws Exception {
+        when(eventService.getEventTypes()).thenReturn(List.of(new EventTypeResponse("MATCH", "Partido", true)));
+
+        mockMvc.perform(get("/api/admin/event-types")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/admin/event-types").with(jwt())).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/event-types").with(jwt().authorities(DIRECTOR_ROLE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].code").value("MATCH"))
+                .andExpect(jsonPath("$[0].requiresMatchup").value(true));
+    }
+
+    @Test
+    void adminGetEventByInternalIdWithDirectorIsOk() throws Exception {
+        when(eventService.getEventByInternalId("EVT-42")).thenReturn(MATCH);
+
+        mockMvc.perform(get("/api/admin/events/EVT-42").with(jwt().authorities(DIRECTOR_ROLE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.internalId").value("EVT-42"));
+    }
+
+    @Test
+    void createEventWithDirectorReachesController() throws Exception {
+        when(eventService.createEvent(any(EventRequest.class))).thenReturn(MATCH);
 
         mockMvc.perform(post("/api/admin/events")
                         .with(jwt().authorities(DIRECTOR_ROLE))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(VALID_EVENT_JSON))
+                        .content(EventFixtures.MATCH_JSON))
                 .andExpect(status().isCreated());
     }
 
-    // Event tiene @AllArgsConstructor con un campo primitivo (isOfficial), así que
-    // Jackson necesita un JSON completo para poder instanciarlo - un "{}" vacío
-    // falla en el parseo antes de llegar al controller.
-    private static final String VALID_EVENT_JSON = """
-            {
-              "internalId": "EVT-SEC-001",
-              "title": "Evento de prueba",
-              "description": "desc",
-              "coverImage": "https://ejemplo.com/imagen.jpg",
-              "type": "MEETING",
-              "category": "AJEDREZ",
-              "eventDate": "2026-12-01",
-              "status": "DRAFT",
-              "isOfficial": true,
-              "organizationId": 1
-            }
-            """;
-
     @Test
-    void createEventWithInvalidPayloadReturns400() throws Exception {
-        String missingRequiredFields = """
-                {
-                  "title": "Evento incompleto"
-                }
-                """;
+    void updateEventByInternalIdWithDirectorIsOk() throws Exception {
+        when(eventService.updateEvent(eq("EVT-42"), any(EventRequest.class))).thenReturn(MATCH);
 
-        mockMvc.perform(post("/api/admin/events")
+        mockMvc.perform(put("/api/admin/events/EVT-42")
                         .with(jwt().authorities(DIRECTOR_ROLE))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(missingRequiredFields))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void createEventWithDuplicateInternalIdReturns409() throws Exception {
-        when(eventService.createEvent(any(Event.class)))
-                .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
-
-        mockMvc.perform(post("/api/admin/events")
-                        .with(jwt().authorities(DIRECTOR_ROLE))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(VALID_EVENT_JSON))
-                .andExpect(status().isConflict());
-    }
-
-    @Test
-    void updateEventWithJwtIsOk() throws Exception {
-        when(eventService.updateEvent(anyLong(), any(Event.class))).thenReturn(new Event());
-
-        mockMvc.perform(put("/api/admin/events/1")
-                        .with(jwt().authorities(DIRECTOR_ROLE))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(VALID_EVENT_JSON))
+                        .content(EventFixtures.MATCH_JSON))
                 .andExpect(status().isOk());
     }
 
     @Test
-    void updateEventNotFoundReturns404() throws Exception {
-        when(eventService.updateEvent(anyLong(), any(Event.class)))
-                .thenThrow(new EventNotFoundException(999L));
-
-        mockMvc.perform(put("/api/admin/events/999")
-                        .with(jwt().authorities(DIRECTOR_ROLE))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(VALID_EVENT_JSON))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void deleteEventWithJwtIsNoContent() throws Exception {
-        mockMvc.perform(delete("/api/admin/events/1").with(jwt().authorities(DIRECTOR_ROLE)))
+    void deleteEventByInternalIdWithDirectorIsNoContent() throws Exception {
+        mockMvc.perform(delete("/api/admin/events/EVT-42").with(jwt().authorities(DIRECTOR_ROLE)))
                 .andExpect(status().isNoContent());
     }
 
     @Test
     void deleteEventNotFoundReturns404() throws Exception {
-        doThrow(new EventNotFoundException(999L)).when(eventService).deleteEvent(999L);
+        doThrow(new EventNotFoundException("EVT-999")).when(eventService).deleteEvent("EVT-999");
 
-        mockMvc.perform(delete("/api/admin/events/999").with(jwt().authorities(DIRECTOR_ROLE)))
+        mockMvc.perform(delete("/api/admin/events/EVT-999").with(jwt().authorities(DIRECTOR_ROLE)))
                 .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void deleteEventWithoutTokenIsUnauthorized() throws Exception {
-        mockMvc.perform(delete("/api/admin/events/1"))
-                .andExpect(status().isUnauthorized());
     }
 }
