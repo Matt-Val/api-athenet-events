@@ -41,7 +41,6 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/public/**").permitAll()
-                .requestMatchers("/api/events/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("DIRECTOR")
                 .anyRequest().denyAll())
             .oauth2ResourceServer(oauth2 -> oauth2
@@ -86,7 +85,6 @@ public class SecurityConfig {
         publicCfg.setMaxAge(3600L);
 
         source.registerCorsConfiguration("/api/public/**", publicCfg);
-        source.registerCorsConfiguration("/api/events/**", publicCfg);
 
         // Panel de administración (Angular) - CRUD completo, con credenciales.
         CorsConfiguration adminCfg = new CorsConfiguration();
