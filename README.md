@@ -29,6 +29,7 @@ Athenet ORG - <a href="https://github.com/fabetabilo/web-athenet">Athenet Públi
 * **Lenguaje:** Java 25.
 * **Persistencia:** PostgreSQL, mapeado con Hibernate/JPA (`spring-boot-starter-data-jpa`).
 * **Autenticación:** `spring-boot-starter-oauth2-resource-server`, validando JWT emitidos por Microsoft Entra ID.
+* **Mensajería:** RabbitMQ (`spring-boot-starter-amqp`), consume los partidos publicados por ms-competition.
 * **Validación:** Bean Validation (`spring-boot-starter-validation`) sobre las entidades expuestas en el CRUD admin.
 * **Build:** Maven (via wrapper `./mvnw`, no requiere instalación global).
 * **Contenerización y despliegue:** Docker (multi-stage build) + GitHub Actions (test → build de imagen → push a GHCR → deploy por SSH).
@@ -62,6 +63,20 @@ El consumidor de `/api/admin/**` es el BFF (contrato en `web-athenet-org/docs/co
 * **Otro tipo:** `organizerInstitutionId` y `organizerCampusId` obligatorios, `organizerTeamId` opcional; sin equipos.
 
 ms-events guarda las referencias como IDs sueltos: la integridad contra ms-institution (sede ∈ institución, equipo ∈ sede, deporte y división) la valida el BFF.
+
+### Partidos de competencias (RabbitMQ)
+
+Los partidos de una copa los gestiona ms-competition. ms-events guarda una **copia de solo lectura** para el calendario:
+
+| Routing key | Cola | Efecto |
+| :--- | :--- | :--- |
+| `partido.actualizado` | `eventos.partidos` | Crea o actualiza el evento `PARTIDO-{matchId}` (upsert por `competitionMatchId`) |
+
+* La copia nace `PUBLISHED`, tipo `MATCH`, oficial, con la imagen de la competencia como portada y 2 horas de duración. Los equipos se guardan como `teamOneId` (local) y `teamTwoId` (visita).
+* `competitionId` y `competitionMatchId` vienen en las respuestas. Editar o eliminar una copia desde `/api/admin/events` responde `409` con `code: MANAGED_BY_COMPETITION`: se edita en la competencia.
+* El resultado no se guarda aquí: se consulta en ms-competition (`GET /api/public/matches/{competitionMatchId}`).
+* El exchange es `athenet.topic`. El listener deserializa el JSON a mano con su propio `ObjectMapper` (Jackson 2) e ignora campos nuevos. Si falla, hay tres reintentos y luego el mensaje va a `eventos.partidos.dlq` mediante `athenet.dlx`.
+* ms-events declara su cola y bindings al conectarse: debe arrancar antes de que ms-competition publique.
 
 ### Control de Acceso y Roles
 
@@ -115,7 +130,7 @@ cp src/main/resources/application-local.properties.example src/main/resources/ap
 | `spring.security.oauth2.resourceserver.jwt.issuer-uri` | Issuer del tenant de Entra ID (`https://login.microsoftonline.com/{tenantId}/v2.0`). |
 | `spring.security.oauth2.resourceserver.jwt.audiences[0..1]` | Application (Client) ID del App Registration, en ambos formatos (`{clientId}` y `api://{clientId}`). |
 
-La conexión a base de datos y el puerto se configuran en `application.properties` (`spring.datasource.url`, `.username`, `.password`, `server.port` — por defecto `8081`).
+La conexión a base de datos y el puerto se configuran en `application.properties` (`spring.datasource.url`, `.username`, `.password`, `server.port` — por defecto `8081`). El broker también: `spring.rabbitmq.host`, `.port`, `.username`, `.password` (por defecto `localhost:5672`, `guest`), sobreescribibles con `SPRING_RABBITMQ_*`.
 
 #### 4. Base de datos
 
@@ -126,6 +141,8 @@ DROP TABLE IF EXISTS event_photos, events CASCADE;
 ```
 
 Al arrancar, la tabla se recrea con el esquema nuevo. Luego se puede cargar el seed manual `db/data.sql` (no versionado) en pgAdmin o `psql`.
+
+Las columnas `competition_id` y `competition_match_id` (copias de partidos) son nullable: `update` las agrega sin borrar la tabla.
 
 #### 5. Servidor de desarrollo
 
@@ -149,23 +166,26 @@ El artefacto se genera en `target/events-0.0.1-SNAPSHOT.jar`.
 ./mvnw test
 ```
 
+Los tests usan el Postgres configurado y no necesitan broker: el test de contexto deja el listener de RabbitMQ detenido.
+
 ### Despliegue
 
 El microservicio se dockeriza con un `Dockerfile` multi-stage (build con JDK 25, runtime con JRE 25) y se despliega mediante `.github/workflows/deploy.yml`:
 
 1. **Test:** corre `./mvnw test` contra un servicio de PostgreSQL levantado en el propio job.
 2. **Build & Push:** builda la imagen y la publica en GitHub Container Registry (`ghcr.io`).
-3. **Deploy:** se conecta por SSH a la instancia de aplicación y levanta el contenedor apuntando a la base de datos, usando secrets del repositorio (`EC2_APP_HOST`, `EC2_SSH_USER`, `EC2_SSH_KEY`, `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_ISSUER_URI`).
+3. **Deploy:** se conecta por SSH a la instancia de aplicación y levanta el contenedor apuntando a la base de datos, usando secrets del repositorio (`EC2_APP_HOST`, `EC2_SSH_USER`, `EC2_SSH_KEY`, `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_ISSUER_URI`, `RABBITMQ_HOST`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`).
 
 ### Estructura del Proyecto
 
 ```text
 src/main/java/com/athenet/events/
-├── config/           # SecurityConfig (OAuth2 Resource Server, CORS, roles)
+├── config/           # SecurityConfig (OAuth2 Resource Server, CORS, roles) y RabbitConfig (cola de partidos)
 ├── controller/        # PublicEventController, AdminEventController
 ├── dto/               # EventRequest, EventResponse, EventTypeResponse
 ├── exception/          # GlobalExceptionHandler, ApiError, FieldError y excepciones de dominio
 ├── mapper/            # EventMapper
+├── messaging/         # CompetitionMatchListener y contrato de partido.actualizado
 ├── model/             # Event, EventType, EventStatus
 ├── repository/        # EventRepository (Spring Data JPA)
 └── service/            # EventService (CRUD) y EventValidator (reglas propias del evento)

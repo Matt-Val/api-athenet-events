@@ -7,7 +7,9 @@ import com.athenet.events.exception.EventNotFoundException;
 import com.athenet.events.exception.EventValidationException;
 import com.athenet.events.exception.FieldError;
 import com.athenet.events.exception.InternalIdTakenException;
+import com.athenet.events.exception.ManagedByCompetitionException;
 import com.athenet.events.mapper.EventMapper;
+import com.athenet.events.messaging.MatchMessage;
 import com.athenet.events.model.Event;
 import com.athenet.events.model.EventStatus;
 import com.athenet.events.model.EventType;
@@ -17,13 +19,19 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class EventService {
+
+    private static final String COMPETITION_MATCH_PREFIX = "PARTIDO-";
+    private static final Duration COMPETITION_MATCH_DURATION = Duration.ofHours(2);
 
     private final EventRepository eventRepository;
     private final EventMapper eventMapper;
@@ -92,6 +100,7 @@ public class EventService {
     @Transactional
     public EventResponse updateEvent(String internalId, EventRequest request) {
         Event existing = findByInternalId(internalId);
+        rejectIfManagedByCompetition(existing);
         rejectIfInvalid(eventValidator.validate(request, internalId));
         eventMapper.updateEntity(existing, request);
         return eventMapper.toResponse(eventRepository.save(existing));
@@ -99,7 +108,48 @@ public class EventService {
 
     @Transactional
     public void deleteEvent(String internalId) {
-        eventRepository.delete(findByInternalId(internalId));
+        Event existing = findByInternalId(internalId);
+        rejectIfManagedByCompetition(existing);
+        eventRepository.delete(existing);
+    }
+
+    // --- Copias de partidos de ms-competition ----------------------------------------------------------
+
+    /**
+     * partido.actualizado: crea o actualiza la copia del partido, buscándola por competitionMatchId.
+     * Nace publicada, con la imagen de la competencia como portada y 2 horas de duración. No pasa por
+     * EventValidator: la competencia ya validó el partido.
+     */
+    @Transactional
+    public void upsertFromCompetition(MatchMessage match) {
+        Event event = eventRepository.findByCompetitionMatchId(match.matchId()).orElseGet(() -> {
+            Event created = new Event();
+            created.setInternalId(COMPETITION_MATCH_PREFIX + match.matchId());
+            created.setCompetitionMatchId(match.matchId());
+            return created;
+        });
+        LocalDateTime start = LocalDateTime.of(LocalDate.parse(match.date()), LocalTime.parse(match.time()));
+        LocalDateTime end = start.plus(COMPETITION_MATCH_DURATION);
+
+        event.setCompetitionId(match.competitionId());
+        event.setTitle(match.title());
+        event.setDescription(match.description());
+        event.setType(EventType.MATCH);
+        event.setStatus(EventStatus.PUBLISHED);
+        event.setOfficial(true);
+        event.setEventDate(start.toLocalDate());
+        event.setStartTime(start.toLocalTime());
+        event.setEndDate(end.toLocalDate());
+        event.setEndTime(end.toLocalTime());
+        event.setLocation(match.location());
+        event.setAddress(match.address());
+        event.setCoverImage(match.competitionImg());
+        event.setSportId(match.sportId());
+        event.setTeamOneId(match.homeTeamId());
+        event.setTeamTwoId(match.awayTeamId());
+        event.setDelegateOid(match.delegateOid());
+        event.setDelegateDisplayName(match.delegateDisplayName());
+        eventRepository.save(event);
     }
 
     // ==========================================
@@ -107,6 +157,12 @@ public class EventService {
     private Event findByInternalId(String internalId) {
         return eventRepository.findByInternalId(internalId)
                 .orElseThrow(() -> new EventNotFoundException(internalId));
+    }
+
+    private static void rejectIfManagedByCompetition(Event event) {
+        if (event.getCompetitionMatchId() != null) {
+            throw new ManagedByCompetitionException(event.getInternalId());
+        }
     }
 
     private static void rejectIfInvalid(List<FieldError> errors) {

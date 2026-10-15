@@ -113,4 +113,12 @@ public class Event {
 
     @Column(name = "delegate_display_name", length = 256)
     private String delegateDisplayName;
+
+    // Copia de un partido de ms-competition (partido.actualizado). Con competitionMatchId
+    // el evento es de solo lectura: se edita en la competencia.
+    @Column(name = "competition_id")
+    private Long competitionId;
+
+    @Column(name = "competition_match_id", unique = true)
+    private Long competitionMatchId;
 }

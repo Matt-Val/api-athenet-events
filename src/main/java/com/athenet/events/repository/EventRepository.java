@@ -35,6 +35,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     boolean existsByInternalId(String internalId);
 
+    // Copia de un partido de ms-competition: upsert por el id del partido
+    Optional<Event> findByCompetitionMatchId(Long competitionMatchId);
+
     List<Event> findAllByOrderByEventDateAscStartTimeAsc();
 
     List<Event> findByStatusOrderByEventDateAscStartTimeAsc(EventStatus status);

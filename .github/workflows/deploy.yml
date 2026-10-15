@@ -91,6 +91,9 @@ jobs:
               -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_1="api://${{ secrets.JWT_AUDIENCE }}" \
               -e APP_CORS_PUBLIC_ORIGINS="${{ secrets.CORS_PUBLIC_ORIGINS }}" \
               -e APP_CORS_ADMIN_ORIGINS="${{ secrets.CORS_ADMIN_ORIGINS }}" \
+              -e SPRING_RABBITMQ_HOST="${{ secrets.RABBITMQ_HOST }}" \
+              -e SPRING_RABBITMQ_USERNAME="${{ secrets.RABBITMQ_USER }}" \
+              -e SPRING_RABBITMQ_PASSWORD="${{ secrets.RABBITMQ_PASSWORD }}" \
               ${{ needs.build-and-push.outputs.image }}:latest
 
             docker image prune -f

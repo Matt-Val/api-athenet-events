@@ -41,6 +41,10 @@ public record EventResponse(
         Long teamTwoId,
 
         String delegateOid,
-        String delegateDisplayName
+        String delegateDisplayName,
+
+        // Solo en copias de partidos de ms-competition (de solo lectura)
+        Long competitionId,
+        Long competitionMatchId
 ) {
 }

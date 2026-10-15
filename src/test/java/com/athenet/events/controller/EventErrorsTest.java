@@ -128,6 +128,17 @@ class EventErrorsTest {
     }
 
     @Test
+    void editarLaCopiaDeUnPartidoDeCompetenciaEs409() throws Exception {
+        Event copy = new EventMapper().toEntity(EventFixtures.match());
+        copy.setCompetitionMatchId(31L);
+        when(repository.findByInternalId("EVT-42")).thenReturn(Optional.of(copy));
+
+        mockMvc.perform(asDirector(put("/api/admin/events/EVT-42"), EventFixtures.MATCH_JSON))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MANAGED_BY_COMPETITION"));
+    }
+
+    @Test
     void actualizarUnEventoInexistenteEs404() throws Exception {
         when(repository.findByInternalId("EVT-42")).thenReturn(Optional.empty());
 

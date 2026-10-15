@@ -8,7 +8,12 @@ import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest
 @Import(TestJwtDecoderConfig.class)
-@TestPropertySource(properties = "spring.security.oauth2.resourceserver.jwt.issuer-uri=")
+@TestPropertySource(properties = {
+		"spring.security.oauth2.resourceserver.jwt.issuer-uri=",
+		// Sin broker en los tests: el listener no arranca y no se declaran colas
+		"spring.rabbitmq.listener.simple.auto-startup=false",
+		"spring.rabbitmq.dynamic=false"
+})
 class EventsApplicationTests {
 
 	@Test

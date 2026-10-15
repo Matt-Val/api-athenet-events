@@ -21,7 +21,7 @@ import java.util.Map;
  * - 400 MALFORMED_REQUEST: el body no se puede leer (JSON inválido, fecha u
  *   hora con otro formato, campo desconocido u objeto anidado).
  * - 422 VALIDATION_FAILED: el body se leyó pero incumple alguna regla.
- * - 404 EVENT_NOT_FOUND / 409 INTERNAL_ID_TAKEN.
+ * - 404 EVENT_NOT_FOUND / 409 INTERNAL_ID_TAKEN / 409 MANAGED_BY_COMPETITION.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -43,6 +43,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleInternalIdTaken(InternalIdTakenException ex) {
         return build(HttpStatus.CONFLICT, "INTERNAL_ID_TAKEN", ex.getMessage(),
                 List.of(new FieldError("internalId", "INTERNAL_ID_TAKEN", "Ese ID interno ya está en uso.")));
+    }
+
+    @ExceptionHandler(ManagedByCompetitionException.class)
+    public ResponseEntity<ApiError> handleManagedByCompetition(ManagedByCompetitionException ex) {
+        return build(HttpStatus.CONFLICT, "MANAGED_BY_COMPETITION", ex.getMessage(), List.of());
     }
 
     // Red de seguridad: si dos creaciones con el mismo internal_id se cruzan entre

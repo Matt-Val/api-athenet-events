@@ -1,6 +1,7 @@
 package com.athenet.events.support;
 
 import com.athenet.events.dto.EventRequest;
+import com.athenet.events.messaging.MatchMessage;
 import com.athenet.events.model.EventStatus;
 import com.athenet.events.model.EventType;
 
@@ -65,6 +66,34 @@ public final class EventFixtures {
               "teamTwoId": 200,
               "delegateOid": "3f2b9c1e-5a7d-4c1b-9e2f-1d0a8b6c4e21",
               "delegateDisplayName": "María Pérez"
+            }
+            """;
+
+    /** partido.actualizado de ms-competition, el 8 de noviembre de 2026 a la hora indicada. */
+    public static MatchMessage competitionMatch(String time) {
+        return new MatchMessage(
+                31L, 4L, 3L, "Octavos de final: Halcones vs Pumas", "Copa Instituciones de Chile 2026",
+                "https://ejemplo.com/copa.png", "2026-11-08", time, "Santiago, Chile", null,
+                12L, 15L, DELEGATE_OID, "María Pérez");
+    }
+
+    /** Mensaje crudo tal como lo publica ms-competition. */
+    public static final String COMPETITION_MATCH_JSON = """
+            {
+              "messageId": "8a6d2c1e-0000-4000-8000-000000000001",
+              "occurredAt": "2026-10-12T21:00:00Z",
+              "type": "partido.actualizado",
+              "data": {
+                "matchId": 31, "competitionId": 4, "sportId": 3,
+                "title": "Octavos de final: Halcones vs Pumas",
+                "description": "Copa Instituciones de Chile 2026",
+                "competitionImg": "https://ejemplo.com/copa.png",
+                "date": "2026-11-08", "time": "18:00",
+                "location": "Santiago, Chile", "address": null,
+                "homeTeamId": 12, "awayTeamId": 15,
+                "delegateOid": "3f2b9c1e-5a7d-4c1b-9e2f-1d0a8b6c4e21",
+                "delegateDisplayName": "María Pérez"
+              }
             }
             """;
 }

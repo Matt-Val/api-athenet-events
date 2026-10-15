@@ -4,8 +4,11 @@ import com.athenet.events.dto.EventResponse;
 import com.athenet.events.exception.EventNotFoundException;
 import com.athenet.events.exception.EventValidationException;
 import com.athenet.events.exception.InternalIdTakenException;
+import com.athenet.events.exception.ManagedByCompetitionException;
 import com.athenet.events.mapper.EventMapper;
 import com.athenet.events.model.Event;
+import com.athenet.events.model.EventStatus;
+import com.athenet.events.model.EventType;
 import com.athenet.events.repository.EventRepository;
 import com.athenet.events.support.EventFixtures;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,6 +90,55 @@ class EventServiceTest {
                 .isInstanceOf(EventNotFoundException.class);
         assertThatThrownBy(() -> service.deleteEvent("EVT-999"))
                 .isInstanceOf(EventNotFoundException.class);
+    }
+
+    @Test
+    void laCopiaDeUnPartidoNacePublicadaConDosHorasYLaPortadaDeLaCompetencia() {
+        when(repository.findByCompetitionMatchId(31L)).thenReturn(Optional.empty());
+
+        service.upsertFromCompetition(EventFixtures.competitionMatch("22:30"));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Event.class);
+        verify(repository).save(captor.capture());
+        Event copy = captor.getValue();
+        assertThat(copy.getInternalId()).isEqualTo("PARTIDO-31");
+        assertThat(copy.getCompetitionMatchId()).isEqualTo(31L);
+        assertThat(copy.getType()).isEqualTo(EventType.MATCH);
+        assertThat(copy.getStatus()).isEqualTo(EventStatus.PUBLISHED);
+        assertThat(copy.getCoverImage()).isEqualTo("https://ejemplo.com/copa.png");
+        assertThat(copy.getTeamOneId()).isEqualTo(12L);
+        assertThat(copy.getTeamTwoId()).isEqualTo(15L);
+        // 22:30 + 2 h cruza la medianoche
+        assertThat(copy.getEndDate()).isEqualTo(java.time.LocalDate.of(2026, 11, 9));
+        assertThat(copy.getEndTime()).isEqualTo(LocalTime.of(0, 30));
+    }
+
+    @Test
+    void unPartidoRepetidoActualizaLaMismaCopia() {
+        Event existing = new Event();
+        existing.setInternalId("PARTIDO-31");
+        existing.setCompetitionMatchId(31L);
+        when(repository.findByCompetitionMatchId(31L)).thenReturn(Optional.of(existing));
+
+        service.upsertFromCompetition(EventFixtures.competitionMatch("18:00"));
+
+        verify(repository).save(existing);
+        assertThat(existing.getInternalId()).isEqualTo("PARTIDO-31");
+        assertThat(existing.getStartTime()).isEqualTo(LocalTime.of(18, 0));
+    }
+
+    @Test
+    void laCopiaDeUnPartidoNoSeEditaNiSeBorraDesdeEventos() {
+        Event copy = mapper.toEntity(EventFixtures.match());
+        copy.setCompetitionMatchId(31L);
+        when(repository.findByInternalId("EVT-42")).thenReturn(Optional.of(copy));
+
+        assertThatThrownBy(() -> service.updateEvent("EVT-42", EventFixtures.match()))
+                .isInstanceOf(ManagedByCompetitionException.class);
+        assertThatThrownBy(() -> service.deleteEvent("EVT-42"))
+                .isInstanceOf(ManagedByCompetitionException.class);
+        verify(repository, never()).save(any());
+        verify(repository, never()).delete(any(Event.class));
     }
 
     @Test
