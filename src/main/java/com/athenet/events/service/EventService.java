@@ -8,6 +8,7 @@ import com.athenet.events.exception.EventValidationException;
 import com.athenet.events.exception.FieldError;
 import com.athenet.events.exception.InternalIdTakenException;
 import com.athenet.events.mapper.EventMapper;
+import com.athenet.events.messaging.EventPublishedPublisher;
 import com.athenet.events.model.Event;
 import com.athenet.events.model.EventStatus;
 import com.athenet.events.model.EventType;
@@ -28,11 +29,14 @@ public class EventService {
     private final EventRepository eventRepository;
     private final EventMapper eventMapper;
     private final EventValidator eventValidator;
+    private final EventPublishedPublisher eventPublishedPublisher;
 
-    public EventService(EventRepository eventRepository, EventMapper eventMapper, EventValidator eventValidator) {
+    public EventService(EventRepository eventRepository, EventMapper eventMapper, EventValidator eventValidator,
+            EventPublishedPublisher eventPublishedPublisher) {
         this.eventRepository = eventRepository;
         this.eventMapper = eventMapper;
         this.eventValidator = eventValidator;
+        this.eventPublishedPublisher = eventPublishedPublisher;
     }
 
     // CATALOGO ---------------------------------
@@ -86,15 +90,20 @@ public class EventService {
         if (eventRepository.existsByInternalId(request.internalId().trim())) {
             throw new InternalIdTakenException(request.internalId());
         }
-        return eventMapper.toResponse(eventRepository.save(eventMapper.toEntity(request)));
+        Event saved = eventRepository.save(eventMapper.toEntity(request));
+        publishIfNewlyPublished(null, saved);
+        return eventMapper.toResponse(saved);
     }
 
     @Transactional
     public EventResponse updateEvent(String internalId, EventRequest request) {
         Event existing = findByInternalId(internalId);
         rejectIfInvalid(eventValidator.validate(request, internalId));
+        EventStatus previous = existing.getStatus();
         eventMapper.updateEntity(existing, request);
-        return eventMapper.toResponse(eventRepository.save(existing));
+        Event saved = eventRepository.save(existing);
+        publishIfNewlyPublished(previous, saved);
+        return eventMapper.toResponse(saved);
     }
 
     @Transactional
@@ -107,6 +116,13 @@ public class EventService {
     private Event findByInternalId(String internalId) {
         return eventRepository.findByInternalId(internalId)
                 .orElseThrow(() -> new EventNotFoundException(internalId));
+    }
+
+    // evento.publicado para ms-notificaciones: solo cuando el evento pasa a PUBLISHED
+    private void publishIfNewlyPublished(EventStatus previous, Event saved) {
+        if (previous != EventStatus.PUBLISHED && saved.getStatus() == EventStatus.PUBLISHED) {
+            eventPublishedPublisher.publish(saved);
+        }
     }
 
     private static void rejectIfInvalid(List<FieldError> errors) {

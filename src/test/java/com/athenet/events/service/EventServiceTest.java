@@ -5,7 +5,9 @@ import com.athenet.events.exception.EventNotFoundException;
 import com.athenet.events.exception.EventValidationException;
 import com.athenet.events.exception.InternalIdTakenException;
 import com.athenet.events.mapper.EventMapper;
+import com.athenet.events.messaging.EventPublishedPublisher;
 import com.athenet.events.model.Event;
+import com.athenet.events.model.EventStatus;
 import com.athenet.events.repository.EventRepository;
 import com.athenet.events.support.EventFixtures;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,13 +24,15 @@ import static org.mockito.Mockito.*;
 class EventServiceTest {
 
     private EventRepository repository;
+    private EventPublishedPublisher publisher;
     private EventService service;
     private final EventMapper mapper = new EventMapper();
 
     @BeforeEach
     void setUp() {
         repository = mock(EventRepository.class);
-        service = new EventService(repository, mapper, new EventValidator());
+        publisher = mock(EventPublishedPublisher.class);
+        service = new EventService(repository, mapper, new EventValidator(), publisher);
         when(repository.save(any(Event.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -77,6 +81,26 @@ class EventServiceTest {
 
         assertThat(updated.internalId()).isEqualTo("EVT-42");
         assertThat(updated.photos()).isEmpty();
+    }
+
+    @Test
+    void crearNotificaSoloSiNacePublicado() {
+        service.createEvent(EventFixtures.match());
+        verifyNoInteractions(publisher);
+
+        service.createEvent(EventFixtures.match(EventStatus.PUBLISHED));
+        verify(publisher).publish(any(Event.class));
+    }
+
+    @Test
+    void actualizarNotificaSoloAlPasarAPublicado() {
+        Event existing = mapper.toEntity(EventFixtures.match());
+        when(repository.findByInternalId("EVT-42")).thenReturn(Optional.of(existing));
+
+        service.updateEvent("EVT-42", EventFixtures.match(EventStatus.PUBLISHED));
+        service.updateEvent("EVT-42", EventFixtures.match(EventStatus.PUBLISHED));
+
+        verify(publisher, times(1)).publish(existing);
     }
 
     @Test

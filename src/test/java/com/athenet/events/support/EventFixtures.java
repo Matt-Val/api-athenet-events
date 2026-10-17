@@ -18,9 +18,13 @@ public final class EventFixtures {
 
     /** Partido que cruza la medianoche. */
     public static EventRequest match() {
+        return match(EventStatus.DRAFT);
+    }
+
+    public static EventRequest match(EventStatus status) {
         return new EventRequest(
                 "EVT-42", "Clásico universitario", "Final del torneo.", null,
-                EventType.MATCH, EventStatus.DRAFT, true,
+                EventType.MATCH, status, true,
                 LocalDate.of(2026, 10, 24), LocalTime.of(22, 0),
                 LocalDate.of(2026, 10, 25), LocalTime.of(0, 30),
                 "Estadio USACH", null, "https://ejemplo.com/cover.jpg", List.of(),

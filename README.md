@@ -30,6 +30,7 @@ Athenet ORG - <a href="https://github.com/fabetabilo/web-athenet">Athenet Públi
 * **Persistencia:** PostgreSQL, mapeado con Hibernate/JPA (`spring-boot-starter-data-jpa`).
 * **Autenticación:** `spring-boot-starter-oauth2-resource-server`, validando JWT emitidos por Microsoft Entra ID.
 * **Validación:** Bean Validation (`spring-boot-starter-validation`) sobre las entidades expuestas en el CRUD admin.
+* **Mensajería:** RabbitMQ (`spring-boot-starter-amqp`), publica `evento.publicado` para ms-notificaciones.
 * **Build:** Maven (via wrapper `./mvnw`, no requiere instalación global).
 * **Contenerización y despliegue:** Docker (multi-stage build) + GitHub Actions (test → build de imagen → push a GHCR → deploy por SSH).
 
@@ -62,6 +63,33 @@ El consumidor de `/api/admin/**` es el BFF (contrato en `web-athenet-org/docs/co
 * **Otro tipo:** `organizerInstitutionId` y `organizerCampusId` obligatorios, `organizerTeamId` opcional; sin equipos.
 
 ms-events guarda las referencias como IDs sueltos: la integridad contra ms-institution (sede ∈ institución, equipo ∈ sede, deporte y división) la valida el BFF.
+
+### Notificaciones (RabbitMQ)
+
+ms-events solo publica en el exchange `athenet.topic`; ms-notificaciones declara su cola, binding y DLQ.
+
+| Routing key | Cuándo | Efecto |
+| :--- | :--- | :--- |
+| `evento.publicado` | Al crear un evento con `status: PUBLISHED` o al editarlo para que pase a `PUBLISHED` | Notificaciones avisa del evento |
+
+Editar un evento que ya estaba publicado no vuelve a publicar. El mensaje se envía después del commit: si el broker falla, el evento queda guardado, el error se registra en el log y el mensaje se pierde.
+
+```json
+{
+  "messageId": "uuid",
+  "occurredAt": "2026-10-17T21:00:00Z",
+  "type": "evento.publicado",
+  "data": {
+    "internalId": "EVT-42", "title": "Clásico universitario", "description": "Final del torneo.",
+    "type": "MATCH", "official": true,
+    "eventDate": "2026-10-24", "startTime": "22:00", "endDate": "2026-10-25", "endTime": "00:30",
+    "location": "Estadio USACH", "address": null, "coverImage": "https://...",
+    "sportId": 3, "organizerInstitutionId": null, "organizerCampusId": null, "organizerTeamId": null,
+    "teamOneId": 100, "teamTwoId": 200,
+    "delegateOid": "uuid", "delegateDisplayName": "María Pérez"
+  }
+}
+```
 
 ### Control de Acceso y Roles
 
@@ -115,7 +143,7 @@ cp src/main/resources/application-local.properties.example src/main/resources/ap
 | `spring.security.oauth2.resourceserver.jwt.issuer-uri` | Issuer del tenant de Entra ID (`https://login.microsoftonline.com/{tenantId}/v2.0`). |
 | `spring.security.oauth2.resourceserver.jwt.audiences[0..1]` | Application (Client) ID del App Registration, en ambos formatos (`{clientId}` y `api://{clientId}`). |
 
-La conexión a base de datos y el puerto se configuran en `application.properties` (`spring.datasource.url`, `.username`, `.password`, `server.port` — por defecto `8081`).
+La conexión a base de datos y el puerto se configuran en `application.properties` (`spring.datasource.url`, `.username`, `.password`, `server.port` — por defecto `8081`). El broker también: `spring.rabbitmq.host`, `.port`, `.username`, `.password` (por defecto `localhost:5672`, `guest`), sobreescribibles con `SPRING_RABBITMQ_*`.
 
 #### 4. Base de datos
 
@@ -155,17 +183,18 @@ El microservicio se dockeriza con un `Dockerfile` multi-stage (build con JDK 25,
 
 1. **Test:** corre `./mvnw test` contra un servicio de PostgreSQL levantado en el propio job.
 2. **Build & Push:** builda la imagen y la publica en GitHub Container Registry (`ghcr.io`).
-3. **Deploy:** se conecta por SSH a la instancia de aplicación y levanta el contenedor apuntando a la base de datos, usando secrets del repositorio (`EC2_APP_HOST`, `EC2_SSH_USER`, `EC2_SSH_KEY`, `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_ISSUER_URI`).
+3. **Deploy:** se conecta por SSH a la instancia de aplicación y levanta el contenedor apuntando a la base de datos, usando secrets del repositorio (`EC2_APP_HOST`, `EC2_SSH_USER`, `EC2_SSH_KEY`, `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_ISSUER_URI`, `RABBITMQ_HOST`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`).
 
 ### Estructura del Proyecto
 
 ```text
 src/main/java/com/athenet/events/
-├── config/           # SecurityConfig (OAuth2 Resource Server, CORS, roles)
+├── config/           # SecurityConfig (OAuth2 Resource Server, CORS, roles) y RabbitConfig (exchange de publicación)
 ├── controller/        # PublicEventController, AdminEventController
 ├── dto/               # EventRequest, EventResponse, EventTypeResponse
 ├── exception/          # GlobalExceptionHandler, ApiError, FieldError y excepciones de dominio
 ├── mapper/            # EventMapper
+├── messaging/         # EventPublishedPublisher, AfterCommitSender y contrato de evento.publicado
 ├── model/             # Event, EventType, EventStatus
 ├── repository/        # EventRepository (Spring Data JPA)
 └── service/            # EventService (CRUD) y EventValidator (reglas propias del evento)

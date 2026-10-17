@@ -3,6 +3,7 @@ package com.athenet.events.controller;
 import com.athenet.events.config.SecurityConfig;
 import com.athenet.events.config.TestJwtDecoderConfig;
 import com.athenet.events.mapper.EventMapper;
+import com.athenet.events.messaging.EventPublishedPublisher;
 import com.athenet.events.model.Event;
 import com.athenet.events.repository.EventRepository;
 import com.athenet.events.service.EventService;
@@ -34,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Formato de las respuestas que consume el BFF: errores por campo (422),
  * body ilegible (400), conflicto (409), inexistente (404) y el 201 con Location.
- * Usa el servicio, el mapper y el validador reales; solo el repositorio es mock.
+ * Usa el servicio, el mapper y el validador reales; solo el repositorio y el publicador son mock.
  */
 @WebMvcTest(controllers = AdminEventController.class)
 @Import({ SecurityConfig.class, TestJwtDecoderConfig.class, EventService.class, EventMapper.class, EventValidator.class })
@@ -48,6 +49,9 @@ class EventErrorsTest {
 
     @MockitoBean
     private EventRepository repository;
+
+    @MockitoBean
+    private EventPublishedPublisher eventPublishedPublisher;
 
     @BeforeEach
     void setUp() {
