@@ -66,27 +66,30 @@ ms-events guarda las referencias como IDs sueltos: la integridad contra ms-insti
 
 ### Notificaciones (RabbitMQ)
 
-ms-events solo publica en el exchange `athenet.topic`; ms-notificaciones declara su cola, binding y DLQ.
+ms-events consume `partido.actualizado` en su cola `eventos.partidos` y publica avisos en `athenet.topic`; ms-notificaciones declara su cola, binding y DLQ. Las copias guardan `competitionId` y `competitionMatchId`; su edición y borrado por CRUD responden `409 COMPETITION_EVENT_READ_ONLY`.
 
 | Routing key | Cuándo | Efecto |
 | :--- | :--- | :--- |
-| `evento.publicado` | Al crear un evento con `status: PUBLISHED` o al editarlo para que pase a `PUBLISHED` | Notificaciones avisa del evento |
+| `evento.publicado` | Al publicar o republicar un evento | Notificaciones avisa del evento |
+| `evento.modificado` | Al cambiar datos relevantes de un evento publicado | Notificaciones avisa la modificación |
+| `evento.cancelado` | Al retirar o borrar un evento publicado | Notificaciones avisa la cancelación |
 
-Editar un evento que ya estaba publicado no vuelve a publicar. El mensaje se envía después del commit: si el broker falla, el evento queda guardado, el error se registra en el log y el mensaje se pierde.
+Editar datos relevantes de un evento publicado genera `evento.modificado`; retirarlo o borrarlo genera `evento.cancelado`. Las republicaciones tienen una revisión superior. Un guardado idéntico no genera otro aviso. Los mensajes se guardan en outbox en la misma transacción y se publican con confirms, returns y reintentos.
+
+La revisión de avisos se conserva por `internalId`, incluso tras borrar/recrear un evento. No eliminar el historial de outbox sin conservar ese contador en otro almacenamiento. La revisión de agenda de Competencia es independiente y evita que mensajes atrasados reviertan la copia.
 
 ```json
 {
   "messageId": "uuid",
   "occurredAt": "2026-10-17T21:00:00Z",
   "type": "evento.publicado",
+  "version": 1,
   "data": {
     "internalId": "EVT-42", "title": "Clásico universitario", "description": "Final del torneo.",
-    "type": "MATCH", "official": true,
+    "type": "MATCH", "status": "PUBLISHED", "official": true,
     "eventDate": "2026-10-24", "startTime": "22:00", "endDate": "2026-10-25", "endTime": "00:30",
     "location": "Estadio USACH", "address": null, "coverImage": "https://...",
-    "sportId": 3, "organizerInstitutionId": null, "organizerCampusId": null, "organizerTeamId": null,
-    "teamOneId": 100, "teamTwoId": 200,
-    "delegateOid": "uuid", "delegateDisplayName": "María Pérez"
+    "sportId": 3, "teamOneId": 100, "teamTwoId": 200
   }
 }
 ```
@@ -147,13 +150,9 @@ La conexión a base de datos y el puerto se configuran en `application.propertie
 
 #### 4. Base de datos
 
-El esquema lo crea Hibernate (`ddl-auto=update`). Como `update` no borra columnas ni quita `NOT NULL`, **tras el cambio de modelo de eventos (deporte, organizador, horario y delegado) la tabla vieja debe borrarse una vez** antes de arrancar, en local y en producción. Los datos son de demo:
+En una base/esquema existente, aplicar `db/migration/001_domain_outbox.sql` y `002_event_origin.sql` antes de desplegar. Son migraciones incrementales; conservar eventos, fotos y mensajes. No recrear tablas para instalar esta integración. Para un esquema de desarrollo nuevo, Hibernate conserva su configuración actual.
 
-```sql
-DROP TABLE IF EXISTS event_photos, events CASCADE;
-```
-
-Al arrancar, la tabla se recrea con el esquema nuevo. Luego se puede cargar el seed manual `db/data.sql` (no versionado) en pgAdmin o `psql`.
+Configurar `RABBITMQ_VHOST` igual que Competencia, Notificaciones y Ranking. `app.messaging.outbox-enabled=false` detiene el publicador sin borrar pendientes. Declarar/verificar `eventos.partidos` y su DLQ antes de confirmar encuentros. Para recibir avisos en Notificaciones hay que habilitar `NEWSLETTER_EVENTS_ENABLED=true` allí.
 
 #### 5. Servidor de desarrollo
 
@@ -194,7 +193,7 @@ src/main/java/com/athenet/events/
 ├── dto/               # EventRequest, EventResponse, EventTypeResponse
 ├── exception/          # GlobalExceptionHandler, ApiError, FieldError y excepciones de dominio
 ├── mapper/            # EventMapper
-├── messaging/         # EventPublishedPublisher, AfterCommitSender y contrato de evento.publicado
+├── messaging/         # Consumidor de agenda, avisos versionados y outbox
 ├── model/             # Event, EventType, EventStatus
 ├── repository/        # EventRepository (Spring Data JPA)
 └── service/            # EventService (CRUD) y EventValidator (reglas propias del evento)
