@@ -26,6 +26,16 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(CompetitionEventReadOnlyException.class)
+    public ResponseEntity<ApiError> handleCompetitionCopy(CompetitionEventReadOnlyException ex) {
+        return build(HttpStatus.CONFLICT, "COMPETITION_EVENT_READ_ONLY", ex.getMessage(), List.of());
+    }
+
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handleConcurrentWrite(Exception ex) {
+        return build(HttpStatus.CONFLICT, "CONCURRENT_CHANGE", "El evento fue modificado; consulta su estado antes de reintentar.", List.of());
+    }
+
     /** Anotaciones de Bean Validation → códigos del contrato. */
     private static final Map<String, String> CONSTRAINT_CODES = Map.of(
             "NotNull", "REQUIRED",

@@ -9,6 +9,7 @@ import com.athenet.events.exception.FieldError;
 import com.athenet.events.exception.InternalIdTakenException;
 import com.athenet.events.mapper.EventMapper;
 import com.athenet.events.messaging.EventPublishedPublisher;
+import com.athenet.events.messaging.EventNotificationData;
 import com.athenet.events.model.Event;
 import com.athenet.events.model.EventStatus;
 import com.athenet.events.model.EventType;
@@ -91,24 +92,28 @@ public class EventService {
             throw new InternalIdTakenException(request.internalId());
         }
         Event saved = eventRepository.save(eventMapper.toEntity(request));
-        publishIfNewlyPublished(null, saved);
+        eventPublishedPublisher.changed(null, saved, false);
         return eventMapper.toResponse(saved);
     }
 
     @Transactional
     public EventResponse updateEvent(String internalId, EventRequest request) {
         Event existing = findByInternalId(internalId);
+        rejectCompetitionCopy(existing);
         rejectIfInvalid(eventValidator.validate(request, internalId));
-        EventStatus previous = existing.getStatus();
+        var previous = EventNotificationData.from(existing);
         eventMapper.updateEntity(existing, request);
         Event saved = eventRepository.save(existing);
-        publishIfNewlyPublished(previous, saved);
+        eventPublishedPublisher.changed(previous, saved, false);
         return eventMapper.toResponse(saved);
     }
 
     @Transactional
     public void deleteEvent(String internalId) {
-        eventRepository.delete(findByInternalId(internalId));
+        var existing = findByInternalId(internalId);
+        rejectCompetitionCopy(existing);
+        eventPublishedPublisher.changed(EventNotificationData.from(existing), existing, true);
+        eventRepository.delete(existing);
     }
 
     // ==========================================
@@ -118,10 +123,9 @@ public class EventService {
                 .orElseThrow(() -> new EventNotFoundException(internalId));
     }
 
-    // evento.publicado para ms-notificaciones: solo cuando el evento pasa a PUBLISHED
-    private void publishIfNewlyPublished(EventStatus previous, Event saved) {
-        if (previous != EventStatus.PUBLISHED && saved.getStatus() == EventStatus.PUBLISHED) {
-            eventPublishedPublisher.publish(saved);
+    private static void rejectCompetitionCopy(Event event) {
+        if (event.getCompetitionId() != null || event.getCompetitionMatchId() != null) {
+            throw new com.athenet.events.exception.CompetitionEventReadOnlyException();
         }
     }
 

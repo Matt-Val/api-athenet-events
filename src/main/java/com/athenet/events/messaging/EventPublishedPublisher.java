@@ -1,55 +1,32 @@
 package com.athenet.events.messaging;
 
 import java.time.Instant;
-import java.time.format.DateTimeFormatter;
 import java.util.UUID;
-
 import org.springframework.stereotype.Component;
-
-import com.athenet.events.config.RabbitConfig;
 import com.athenet.events.model.Event;
+import com.athenet.events.repository.OutboxMessageRepository;
+import lombok.RequiredArgsConstructor;
 
-/** Publica evento.publicado cuando un evento queda en PUBLISHED, al crearlo o al editarlo. */
+/** Avisos versionados persistidos en la transacción del evento; no envía al broker directamente. */
 @Component
+@RequiredArgsConstructor
 public class EventPublishedPublisher {
+    private final OutboxEventWriter outbox;
+    private final OutboxMessageRepository messages;
 
-    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
-
-    private final AfterCommitSender sender;
-
-    public EventPublishedPublisher(AfterCommitSender sender) {
-        this.sender = sender;
-    }
-
-    public void publish(Event event) {
-        EventPublishedMessage data = new EventPublishedMessage(
-                event.getInternalId(),
-                event.getTitle(),
-                event.getDescription(),
-                event.getType().name(),
-                event.isOfficial(),
-                event.getEventDate().toString(),
-                event.getStartTime().format(TIME_FORMAT),
-                event.getEndDate().toString(),
-                event.getEndTime().format(TIME_FORMAT),
-                event.getLocation(),
-                event.getAddress(),
-                event.getCoverImage(),
-                event.getSportId(),
-                event.getOrganizerInstitutionId(),
-                event.getOrganizerCampusId(),
-                event.getOrganizerTeamId(),
-                event.getTeamOneId(),
-                event.getTeamTwoId(),
-                event.getDelegateOid(),
-                event.getDelegateDisplayName());
-
-        EventPublishedEnvelope envelope = new EventPublishedEnvelope(
-                UUID.randomUUID().toString(),
-                Instant.now().toString(),
-                RabbitConfig.EVENT_PUBLISHED_ROUTING_KEY,
-                data);
-
-        sender.send(RabbitConfig.EVENT_PUBLISHED_ROUTING_KEY, envelope);
+    public void changed(EventNotificationData before, Event event, boolean deleted) {
+        var after = EventNotificationData.from(event);
+        boolean wasPublished = before != null && "PUBLISHED".equals(before.status());
+        boolean isPublished = !deleted && "PUBLISHED".equals(after.status());
+        String type;
+        if (wasPublished && !isPublished) type = "evento.cancelado";
+        else if (isPublished && !wasPublished) type = "evento.publicado";
+        else if (isPublished && !after.equals(before)) type = "evento.modificado";
+        else return;
+        long version = messages.lastRevision(event.getInternalId()) + 1;
+        event.setNotificationVersion(version);
+        if (type.equals("evento.cancelado")) after = after.cancelled();
+        outbox.enqueue(type,event.getInternalId(),version,
+                new EventNotificationEnvelope(UUID.randomUUID().toString(),Instant.now().toString(),type,version,after));
     }
 }

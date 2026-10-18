@@ -75,7 +75,7 @@ public class EventMapper {
                 event.getTeamOneId(),
                 event.getTeamTwoId(),
                 event.getDelegateOid(),
-                event.getDelegateDisplayName()
+                event.getDelegateDisplayName(), event.getCompetitionId(), event.getCompetitionMatchId()
         );
     }
 }
