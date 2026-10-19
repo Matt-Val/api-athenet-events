@@ -3,6 +3,10 @@ name: Build, Push and Deploy
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -30,27 +34,28 @@ jobs:
       - run: ./mvnw test -B
 
   build-and-push:
+    if: github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     outputs:
       image: ${{ steps.image.outputs.name }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set lowercase image name
+      - name: Set Docker Hub image name
         id: image
-        run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+        run: |
+          : "${DOCKERHUB_USERNAME:?Configura la variable DOCKERHUB_USERNAME}"
+          echo "name=${DOCKERHUB_USERNAME}/api-athenet-events" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
         with:
@@ -63,18 +68,48 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build-and-push
     runs-on: ubuntu-latest
+    concurrency:
+      group: events-ec2-deploy
+      cancel-in-progress: false
     steps:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_REF: ${{ needs.build-and-push.outputs.image }}:${{ github.sha }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_ISSUER_URI: ${{ secrets.JWT_ISSUER_URI }}
+          JWT_AUDIENCE: ${{ secrets.JWT_AUDIENCE }}
+          CORS_PUBLIC_ORIGINS: ${{ secrets.CORS_PUBLIC_ORIGINS }}
+          CORS_ADMIN_ORIGINS: ${{ secrets.CORS_ADMIN_ORIGINS }}
+          RABBITMQ_HOST: ${{ secrets.RABBITMQ_HOST }}
+          RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
         with:
           host: ${{ secrets.EC2_APP_HOST }}
           username: ${{ secrets.EC2_SSH_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,IMAGE_REF,DB_HOST,DB_USERNAME,DB_PASSWORD,JWT_ISSUER_URI,JWT_AUDIENCE,CORS_PUBLIC_ORIGINS,CORS_ADMIN_ORIGINS,RABBITMQ_HOST,RABBITMQ_USER,RABBITMQ_PASSWORD
+          command_timeout: 10m
           script: |
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-            docker pull ${{ needs.build-and-push.outputs.image }}:latest
+            set -eu
+            : "${DB_HOST:?Configura DB_HOST}"
+            : "${DB_USERNAME:?Configura DB_USERNAME}"
+            : "${DB_PASSWORD:?Configura DB_PASSWORD}"
+            : "${JWT_ISSUER_URI:?Configura JWT_ISSUER_URI}"
+            : "${JWT_AUDIENCE:?Configura JWT_AUDIENCE}"
+            : "${RABBITMQ_HOST:?Configura RABBITMQ_HOST}"
+            : "${RABBITMQ_USER:?Configura RABBITMQ_USER}"
+            : "${RABBITMQ_PASSWORD:?Configura RABBITMQ_PASSWORD}"
+            printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            unset DOCKERHUB_TOKEN
+            docker pull "$IMAGE_REF"
 
             docker stop athenet-events || true
             docker rm athenet-events || true
@@ -83,14 +118,20 @@ jobs:
               --name athenet-events \
               --restart unless-stopped \
               -p 8081:8081 \
-              -e SPRING_DATASOURCE_URL="jdbc:postgresql://${{ secrets.DB_HOST }}:5432/athenet_events_db" \
-              -e SPRING_DATASOURCE_USERNAME="${{ secrets.DB_USERNAME }}" \
-              -e SPRING_DATASOURCE_PASSWORD="${{ secrets.DB_PASSWORD }}" \
-              -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI="${{ secrets.JWT_ISSUER_URI }}" \
-              -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_0="${{ secrets.JWT_AUDIENCE }}" \
-              -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_1="api://${{ secrets.JWT_AUDIENCE }}" \
-              -e APP_CORS_PUBLIC_ORIGINS="${{ secrets.CORS_PUBLIC_ORIGINS }}" \
-              -e APP_CORS_ADMIN_ORIGINS="${{ secrets.CORS_ADMIN_ORIGINS }}" \
-              ${{ needs.build-and-push.outputs.image }}:latest
+              -e SPRING_DATASOURCE_URL="jdbc:postgresql://${DB_HOST}:5432/events_db" \
+              -e SPRING_DATASOURCE_USERNAME="$DB_USERNAME" \
+              -e SPRING_DATASOURCE_PASSWORD="$DB_PASSWORD" \
+              -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI="$JWT_ISSUER_URI" \
+              -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_0="$JWT_AUDIENCE" \
+              -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_1="api://${JWT_AUDIENCE}" \
+              -e APP_CORS_PUBLIC_ORIGINS="${CORS_PUBLIC_ORIGINS:-http://localhost:5173,http://localhost:4200}" \
+              -e APP_CORS_ADMIN_ORIGINS="${CORS_ADMIN_ORIGINS:-http://localhost:4200}" \
+              -e SPRING_RABBITMQ_HOST="$RABBITMQ_HOST" \
+              -e SPRING_RABBITMQ_PORT="5672" \
+              -e SPRING_RABBITMQ_VIRTUAL_HOST="/" \
+              -e SPRING_RABBITMQ_SSL_ENABLED="false" \
+              -e SPRING_RABBITMQ_USERNAME="$RABBITMQ_USER" \
+              -e SPRING_RABBITMQ_PASSWORD="$RABBITMQ_PASSWORD" \
+              "$IMAGE_REF"
 
-            docker image prune -f
+            docker ps --filter name=athenet-events

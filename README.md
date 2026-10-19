@@ -30,15 +30,16 @@ Athenet ORG - <a href="https://github.com/fabetabilo/web-athenet">Athenet Públi
 * **Persistencia:** PostgreSQL, mapeado con Hibernate/JPA (`spring-boot-starter-data-jpa`).
 * **Autenticación:** `spring-boot-starter-oauth2-resource-server`, validando JWT emitidos por Microsoft Entra ID.
 * **Validación:** Bean Validation (`spring-boot-starter-validation`) sobre las entidades expuestas en el CRUD admin.
+* **Mensajería:** RabbitMQ (`spring-boot-starter-amqp`), publica `evento.publicado` para ms-notificaciones.
 * **Build:** Maven (via wrapper `./mvnw`, no requiere instalación global).
-* **Contenerización y despliegue:** Docker (multi-stage build) + GitHub Actions (test → build de imagen → push a GHCR → deploy por SSH).
+* **Contenerización y despliegue:** Docker (multi-stage build) + GitHub Actions (test → build de imagen → push a Docker Hub → deploy por SSH).
 
 ### ms-events
 
 Este microservicio centraliza la información de eventos deportivos institucionales de Athenet: torneos, competencias y actividades organizadas por las casas de estudio adscritas. Expone dos superficies bien diferenciadas:
 
-* **Pública (`/api/public/events`, `/api/events/**`):** catálogo de eventos publicados, próximos eventos, evento destacado para el hero countdown, calendario de próximos días y detalle por `internalId`. Sin autenticación.
-* **Administrativa (`/api/admin/events`):** alta, edición, baja y listado completo de eventos (incluye borradores y cancelados), reservada al rol `DIRECTOR`.
+* **Pública (`/api/public/events`):** catálogo de eventos publicados, próximos eventos, evento destacado para el hero countdown, calendario de próximos días y detalle por `internalId`. Sin autenticación.
+* **Administrativa (`/api/admin/events`, `/api/admin/event-types`):** alta, edición, baja y listado completo de eventos (incluye borradores y cancelados), reservada al rol `DIRECTOR`.
 
 | Método | Endpoint | Acceso | Descripción |
 | :--- | :--- | :--- | :--- |
@@ -47,11 +48,51 @@ Este microservicio centraliza la información de eventos deportivos instituciona
 | `GET` | `/api/public/events/featured` | Público | Evento individual más próximo (hero countdown) |
 | `GET` | `/api/public/events/upcoming` | Público | Calendario paginado (`daysAhead`, `page`, `size`) |
 | `GET` | `/api/public/events/{internalId}` | Público | Detalle de un evento |
-| `GET` | `/api/events/next` | Público | Próximo evento (alias usado por el front) |
+| `GET` | `/api/admin/event-types` | `DIRECTOR` | Tipos de evento con `label` y `requiresMatchup` |
 | `GET` | `/api/admin/events` | `DIRECTOR` | Listado completo (incluye `DRAFT`/`CANCELLED`) |
-| `POST` | `/api/admin/events` | `DIRECTOR` | Crear evento |
-| `PUT` | `/api/admin/events/{id}` | `DIRECTOR` | Actualizar evento |
-| `DELETE` | `/api/admin/events/{id}` | `DIRECTOR` | Eliminar evento |
+| `GET` | `/api/admin/events/{internalId}` | `DIRECTOR` | Detalle en cualquier estado |
+| `POST` | `/api/admin/events` | `DIRECTOR` | Crear evento (`201` + `Location`) |
+| `PUT` | `/api/admin/events/{internalId}` | `DIRECTOR` | Actualizar evento (`internalId` inmutable) |
+| `DELETE` | `/api/admin/events/{internalId}` | `DIRECTOR` | Eliminar evento |
+
+El consumidor de `/api/admin/**` es el BFF (contrato en `web-athenet-org/docs/contrato-bff-events.md`). El body de escritura es **plano, solo IDs**:
+
+* **Inicio y término:** `eventDate` + `startTime` y `endDate` + `endTime` (`yyyy-MM-dd` / `HH:mm`, sin zona). Un evento puede cruzar la medianoche o durar varios días.
+* **Deporte:** `sportId` es el `Deporte.id` de ms-institution. Es obligatorio solo en partidos.
+* **Partido (`MATCH`):** `teamOneId`, `teamTwoId` (distintos) y delegado (`delegateOid` + `delegateDisplayName`) obligatorios; sin organizador.
+* **Otro tipo:** `organizerInstitutionId` y `organizerCampusId` obligatorios, `organizerTeamId` opcional; sin equipos.
+
+ms-events guarda las referencias como IDs sueltos: la integridad contra ms-institution (sede ∈ institución, equipo ∈ sede, deporte y división) la valida el BFF.
+
+### Notificaciones (RabbitMQ)
+
+ms-events consume `partido.actualizado` en su cola `eventos.partidos` y publica avisos en `athenet.topic`; ms-notificaciones declara su cola, binding y DLQ. Las copias guardan `competitionId` y `competitionMatchId`; su edición y borrado por CRUD responden `409 COMPETITION_EVENT_READ_ONLY`.
+
+| Routing key | Cuándo | Efecto |
+| :--- | :--- | :--- |
+| `evento.publicado` | Al publicar o republicar un evento | Notificaciones avisa del evento |
+| `evento.modificado` | Al cambiar datos relevantes de un evento publicado | Notificaciones avisa la modificación |
+| `evento.cancelado` | Al retirar o borrar un evento publicado | Notificaciones avisa la cancelación |
+
+Editar datos relevantes de un evento publicado genera `evento.modificado`; retirarlo o borrarlo genera `evento.cancelado`. Las republicaciones tienen una revisión superior. Un guardado idéntico no genera otro aviso. Los mensajes se guardan en outbox en la misma transacción y se publican con confirms, returns y reintentos.
+
+La revisión de avisos se conserva por `internalId`, incluso tras borrar/recrear un evento. No eliminar el historial de outbox sin conservar ese contador en otro almacenamiento. La revisión de agenda de Competencia es independiente y evita que mensajes atrasados reviertan la copia.
+
+```json
+{
+  "messageId": "uuid",
+  "occurredAt": "2026-10-17T21:00:00Z",
+  "type": "evento.publicado",
+  "version": 1,
+  "data": {
+    "internalId": "EVT-42", "title": "Clásico universitario", "description": "Final del torneo.",
+    "type": "MATCH", "status": "PUBLISHED", "official": true,
+    "eventDate": "2026-10-24", "startTime": "22:00", "endDate": "2026-10-25", "endTime": "00:30",
+    "location": "Estadio USACH", "address": null, "coverImage": "https://...",
+    "sportId": 3, "teamOneId": 100, "teamTwoId": 200
+  }
+}
+```
 
 ### Control de Acceso y Roles
 
@@ -59,9 +100,16 @@ El acceso al panel administrativo está protegido mediante autenticación federa
 
 * **`DIRECTOR`:** único rol habilitado para operar el CRUD de eventos (crear, editar, eliminar y ver borradores/cancelados).
 * **Sin token / sin rol `DIRECTOR`:** acceso denegado (`401` sin token válido, `403` con token válido pero sin el rol) a todo `/api/admin/**`.
-* **Rutas públicas:** `/api/public/**` y `/api/events/**` no requieren autenticación.
+* **Rutas públicas:** `/api/public/**` no requiere autenticación.
 
-Las respuestas de error siguen un formato consistente (`ApiError`: `timestamp`, `status`, `error`, `message`), manejado centralmente por `GlobalExceptionHandler` (404 para eventos inexistentes, 409 por `internal_id` duplicado, 400 por validación).
+Las respuestas de error siguen un formato consistente (`ApiError`: `timestamp`, `status`, `error`, `code`, `message`, `fieldErrors`), manejado centralmente por `GlobalExceptionHandler`. Cada `fieldError` trae el nombre exacto de la clave del body (`field`), un `code` y un `message`:
+
+| HTTP | `code` | Cuándo |
+| :--- | :--- | :--- |
+| `400` | `MALFORMED_REQUEST` | JSON inválido, fecha u hora con otro formato, campo desconocido u objeto anidado |
+| `404` | `EVENT_NOT_FOUND` | No existe el `internalId` de la ruta |
+| `409` | `INTERNAL_ID_TAKEN` | `internalId` duplicado |
+| `422` | `VALIDATION_FAILED` | Obligatorio faltante o regla del evento incumplida (`END_BEFORE_START`, `SAME_TEAM`, `ORGANIZER_NOT_ALLOWED`, `MATCHUP_NOT_ALLOWED`, `IMMUTABLE`…) |
 
 ### Desarrollo Local
 
@@ -98,9 +146,15 @@ cp src/main/resources/application-local.properties.example src/main/resources/ap
 | `spring.security.oauth2.resourceserver.jwt.issuer-uri` | Issuer del tenant de Entra ID (`https://login.microsoftonline.com/{tenantId}/v2.0`). |
 | `spring.security.oauth2.resourceserver.jwt.audiences[0..1]` | Application (Client) ID del App Registration, en ambos formatos (`{clientId}` y `api://{clientId}`). |
 
-La conexión a base de datos y el puerto se configuran en `application.properties` (`spring.datasource.url`, `.username`, `.password`, `server.port` — por defecto `8081`).
+La conexión a base de datos y el puerto se configuran en `application.properties` (`spring.datasource.url`, `.username`, `.password`, `server.port` — por defecto `8081`). El broker también: `spring.rabbitmq.host`, `.port`, `.username`, `.password` (por defecto `localhost:5672`, `guest`), sobreescribibles con `SPRING_RABBITMQ_*`.
 
-#### 4. Servidor de desarrollo
+#### 4. Base de datos
+
+En una base/esquema existente, aplicar `db/migration/001_domain_outbox.sql` y `002_event_origin.sql` antes de desplegar. Son migraciones incrementales; conservar eventos, fotos y mensajes. No recrear tablas para instalar esta integración. Para un esquema de desarrollo nuevo, Hibernate conserva su configuración actual.
+
+Configurar `RABBITMQ_VHOST` igual que Competencia, Notificaciones y Ranking. `app.messaging.outbox-enabled=false` detiene el publicador sin borrar pendientes. Declarar/verificar `eventos.partidos` y su DLQ antes de confirmar encuentros. Para recibir avisos en Notificaciones hay que habilitar `NEWSLETTER_EVENTS_ENABLED=true` allí.
+
+#### 5. Servidor de desarrollo
 
 ```bash
 ./mvnw spring-boot:run
@@ -108,7 +162,7 @@ La conexión a base de datos y el puerto se configuran en `application.propertie
 
 La API queda disponible en `http://localhost:8081/`.
 
-#### 5. Compilación para producción
+#### 6. Compilación para producción
 
 ```bash
 ./mvnw clean package -DskipTests
@@ -116,7 +170,7 @@ La API queda disponible en `http://localhost:8081/`.
 
 El artefacto se genera en `target/events-0.0.1-SNAPSHOT.jar`.
 
-#### 6. Ejecución de tests
+#### 7. Ejecución de tests
 
 ```bash
 ./mvnw test
@@ -127,17 +181,20 @@ El artefacto se genera en `target/events-0.0.1-SNAPSHOT.jar`.
 El microservicio se dockeriza con un `Dockerfile` multi-stage (build con JDK 25, runtime con JRE 25) y se despliega mediante `.github/workflows/deploy.yml`:
 
 1. **Test:** corre `./mvnw test` contra un servicio de PostgreSQL levantado en el propio job.
-2. **Build & Push:** builda la imagen y la publica en GitHub Container Registry (`ghcr.io`).
-3. **Deploy:** se conecta por SSH a la instancia de aplicación y levanta el contenedor apuntando a la base de datos, usando secrets del repositorio (`EC2_APP_HOST`, `EC2_SSH_USER`, `EC2_SSH_KEY`, `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_ISSUER_URI`).
+2. **Build & Push:** builda la imagen y la publica en Docker Hub.
+3. **Deploy:** se conecta por SSH a la instancia de aplicación y levanta el contenedor apuntando a la base de datos, usando secrets del repositorio (`EC2_APP_HOST`, `EC2_SSH_USER`, `EC2_SSH_KEY`, `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_ISSUER_URI`, `RABBITMQ_HOST`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`).
 
 ### Estructura del Proyecto
 
 ```text
 src/main/java/com/athenet/events/
-├── config/           # SecurityConfig (OAuth2 Resource Server, CORS, roles)
-├── controller/        # PublicEventController, AdminEventController, NextEventController
-├── exception/          # EventNotFoundException, GlobalExceptionHandler, ApiError
-├── model/             # Event, EventType, EventCategory, EventStatus
+├── config/           # SecurityConfig (OAuth2 Resource Server, CORS, roles) y RabbitConfig (exchange de publicación)
+├── controller/        # PublicEventController, AdminEventController
+├── dto/               # EventRequest, EventResponse, EventTypeResponse
+├── exception/          # GlobalExceptionHandler, ApiError, FieldError y excepciones de dominio
+├── mapper/            # EventMapper
+├── messaging/         # Consumidor de agenda, avisos versionados y outbox
+├── model/             # Event, EventType, EventStatus
 ├── repository/        # EventRepository (Spring Data JPA)
-└── service/            # EventService (reglas de negocio del CRUD)
+└── service/            # EventService (CRUD) y EventValidator (reglas propias del evento)
 ```

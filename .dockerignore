@@ -3,3 +3,7 @@ target/
 .github/
 .vscode/
 *.md
+
+# Secretos locales de OAuth2 / Azure (tenant y client ID reales).
+# Ignorado por git, pero docker build lee el working tree, no git.
+src/main/resources/application-local.properties

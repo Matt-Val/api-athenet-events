@@ -1,118 +1,141 @@
 package com.athenet.events.service;
 
+import com.athenet.events.dto.EventRequest;
+import com.athenet.events.dto.EventResponse;
+import com.athenet.events.dto.EventTypeResponse;
 import com.athenet.events.exception.EventNotFoundException;
+import com.athenet.events.exception.EventValidationException;
+import com.athenet.events.exception.FieldError;
+import com.athenet.events.exception.InternalIdTakenException;
+import com.athenet.events.mapper.EventMapper;
+import com.athenet.events.messaging.EventPublishedPublisher;
+import com.athenet.events.messaging.EventNotificationData;
 import com.athenet.events.model.Event;
 import com.athenet.events.model.EventStatus;
+import com.athenet.events.model.EventType;
 import com.athenet.events.repository.EventRepository;
-import org.springframework.stereotype.Service;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class EventService {
-    
+
     private final EventRepository eventRepository;
+    private final EventMapper eventMapper;
+    private final EventValidator eventValidator;
+    private final EventPublishedPublisher eventPublishedPublisher;
 
-    // Inyección de dependencias a través del constructor
-    public EventService(EventRepository eventRepository) { 
+    public EventService(EventRepository eventRepository, EventMapper eventMapper, EventValidator eventValidator,
+            EventPublishedPublisher eventPublishedPublisher) {
         this.eventRepository = eventRepository;
+        this.eventMapper = eventMapper;
+        this.eventValidator = eventValidator;
+        this.eventPublishedPublisher = eventPublishedPublisher;
     }
 
-    // ==========================================
-    // VISTA PÚBLICA (Acceso libre)
-    // ==========================================
-
-    public List<Event> getAllEvents() { 
-        return eventRepository.findAll();
+    // CATALOGO ---------------------------------
+    public List<EventTypeResponse> getEventTypes() {
+        return Arrays.stream(EventType.values()).map(EventTypeResponse::from).toList();
     }
 
-    public List<Event> getAllPublishedEvents() {
-        return eventRepository.findByStatusOrderByEventDateAsc(EventStatus.PUBLISHED);
+    // VISTA PÚBLICA -----------------------------------------------------------------
+
+    public List<EventResponse> getAllPublishedEvents() {
+        return toResponses(eventRepository.findByStatusOrderByEventDateAscStartTimeAsc(EventStatus.PUBLISHED));
     }
 
-    public Page<Event> getUpcomingEvents(
-        int daysAhead,
-        EventStatus status,
-        Pageable pageable) {
+    /** Calendario: eventos publicados que ocurren (aunque sea en parte) entre hoy y hoy + daysAhead. */
+    public Page<EventResponse> getUpcomingEvents(int daysAhead, EventStatus status, Pageable pageable) {
+        LocalDate today = LocalDate.now();
+        return eventRepository
+                .findByStatusAndEventDateLessThanEqualAndEndDateGreaterThanEqual(status, today.plusDays(daysAhead), today, pageable)
+                .map(eventMapper::toResponse);
+    }
 
-            LocalDate today = LocalDate.now();
-            LocalDate futureDate = today.plusDays(daysAhead);
+    public EventResponse getEventByInternalId(String internalId) {
+        return eventMapper.toResponse(findByInternalId(internalId));
+    }
 
-            return eventRepository.findByStatusAndEventDateBetween(
-                status,
-                today,
-                futureDate,
-                pageable);
+    public Optional<EventResponse> getNextEvent() {
+        return eventRepository
+                .findFirstByStatusAndEventDateGreaterThanEqualOrderByEventDateAscStartTimeAsc(EventStatus.PUBLISHED, LocalDate.now())
+                .map(eventMapper::toResponse);
+    }
+
+    public List<EventResponse> getNextTenEvents() {
+        return toResponses(eventRepository
+                .findTop10ByStatusAndEventDateGreaterThanEqualOrderByEventDateAscStartTimeAsc(EventStatus.PUBLISHED, LocalDate.now()));
+    }
+
+
+
+
+
+    // --- ADMIN y gestion interna -----------------------------------------------------------------------
+
+    /** Todos los estados, incluidos DRAFT y CANCELLED. */
+    public List<EventResponse> getAllEvents() {
+        return toResponses(eventRepository.findAllByOrderByEventDateAscStartTimeAsc());
+    }
+
+    @Transactional
+    public EventResponse createEvent(EventRequest request) {
+        rejectIfInvalid(eventValidator.validate(request, null));
+        if (eventRepository.existsByInternalId(request.internalId().trim())) {
+            throw new InternalIdTakenException(request.internalId());
         }
+        Event saved = eventRepository.save(eventMapper.toEntity(request));
+        eventPublishedPublisher.changed(null, saved, false);
+        return eventMapper.toResponse(saved);
+    }
 
-    public Event getEventByInternalId(String internalId) {
+    @Transactional
+    public EventResponse updateEvent(String internalId, EventRequest request) {
+        Event existing = findByInternalId(internalId);
+        rejectCompetitionCopy(existing);
+        rejectIfInvalid(eventValidator.validate(request, internalId));
+        var previous = EventNotificationData.from(existing);
+        eventMapper.updateEntity(existing, request);
+        Event saved = eventRepository.save(existing);
+        eventPublishedPublisher.changed(previous, saved, false);
+        return eventMapper.toResponse(saved);
+    }
+
+    @Transactional
+    public void deleteEvent(String internalId) {
+        var existing = findByInternalId(internalId);
+        rejectCompetitionCopy(existing);
+        eventPublishedPublisher.changed(EventNotificationData.from(existing), existing, true);
+        eventRepository.delete(existing);
+    }
+
+    // ==========================================
+
+    private Event findByInternalId(String internalId) {
         return eventRepository.findByInternalId(internalId)
-            .orElseThrow(() -> new EventNotFoundException(internalId));
+                .orElseThrow(() -> new EventNotFoundException(internalId));
     }
 
-    public Optional<Event> getNextEvent() {
-        return eventRepository.findFirstByStatusAndEventDateGreaterThanEqualOrderByEventDateAsc(EventStatus.PUBLISHED, LocalDate.now());
-    }
-
-    public List<Event> getNextTenEvents() {
-        return eventRepository.findTop10ByStatusAndEventDateGreaterThanEqualOrderByEventDateAsc(EventStatus.PUBLISHED, LocalDate.now());
-    }
-
-    // ==========================================
-    // VISTA ADMIN ORG (GESTION INTERNA)
-    // ==========================================
-
-    // Método para crear un nuevo evento
-    public Event createEvent(Event event) {
-        // Ignora cualquier id que venga en el body: un create siempre es un insert nuevo,
-        // nunca debe pisar un evento existente por un id enviado por error.
-        event.setId(null);
-        return eventRepository.save(event);
-    }
-
-    // Método para actualizar un evento ya existente.
-    public Event updateEvent(Long id, Event updatedEvent) { 
-        // Busca el evento y si existe se actualiza (ID)
-        return eventRepository.findById(id).map(existingEvent -> { 
-            // Datos generales.
-            existingEvent.setInternalId(updatedEvent.getInternalId());
-            existingEvent.setTitle(updatedEvent.getTitle());
-            existingEvent.setDescription(updatedEvent.getDescription());
-            existingEvent.setDescriptionOpt(updatedEvent.getDescriptionOpt());
-            
-            // imagenes, tanto el cover como el arraylist de fotos
-            existingEvent.setCoverImage(updatedEvent.getCoverImage());
-            existingEvent.getPhotos().clear();
-            if (updatedEvent.getPhotos() != null) { 
-                existingEvent.getPhotos().addAll(updatedEvent.getPhotos());
-            }
-
-            // ENUMS y fechas
-            existingEvent.setType(updatedEvent.getType());
-            existingEvent.setCategory(updatedEvent.getCategory());
-            existingEvent.setEventDate(updatedEvent.getEventDate());
-            existingEvent.setStatus(updatedEvent.getStatus());
-
-
-            // Flags y Teams
-            existingEvent.setOfficial(updatedEvent.isOfficial());
-            existingEvent.setOrganizationId(updatedEvent.getOrganizationId());
-            existingEvent.setTeamOneId(updatedEvent.getTeamOneId());
-            existingEvent.setTeamTwoId(updatedEvent.getTeamTwoId());
-
-            return eventRepository.save(existingEvent);
-        }).orElseThrow(() -> new EventNotFoundException(id));
-    }
-
-    public void deleteEvent(Long id) {
-        if (!eventRepository.existsById(id)) {
-            throw new EventNotFoundException(id);
+    private static void rejectCompetitionCopy(Event event) {
+        if (event.getCompetitionId() != null || event.getCompetitionMatchId() != null) {
+            throw new com.athenet.events.exception.CompetitionEventReadOnlyException();
         }
-        eventRepository.deleteById(id);
     }
 
+    private static void rejectIfInvalid(List<FieldError> errors) {
+        if (!errors.isEmpty()) {
+            throw new EventValidationException(errors);
+        }
+    }
+
+    private List<EventResponse> toResponses(List<Event> events) {
+        return events.stream().map(eventMapper::toResponse).toList();
+    }
 }
