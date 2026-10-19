@@ -32,7 +32,7 @@ Athenet ORG - <a href="https://github.com/fabetabilo/web-athenet">Athenet Públi
 * **Validación:** Bean Validation (`spring-boot-starter-validation`) sobre las entidades expuestas en el CRUD admin.
 * **Mensajería:** RabbitMQ (`spring-boot-starter-amqp`), publica `evento.publicado` para ms-notificaciones.
 * **Build:** Maven (via wrapper `./mvnw`, no requiere instalación global).
-* **Contenerización y despliegue:** Docker (multi-stage build) + GitHub Actions (test → build de imagen → push a GHCR → deploy por SSH).
+* **Contenerización y despliegue:** Docker (multi-stage build) + GitHub Actions (test → build de imagen → push a Docker Hub → deploy por SSH).
 
 ### ms-events
 
@@ -181,7 +181,7 @@ El artefacto se genera en `target/events-0.0.1-SNAPSHOT.jar`.
 El microservicio se dockeriza con un `Dockerfile` multi-stage (build con JDK 25, runtime con JRE 25) y se despliega mediante `.github/workflows/deploy.yml`:
 
 1. **Test:** corre `./mvnw test` contra un servicio de PostgreSQL levantado en el propio job.
-2. **Build & Push:** builda la imagen y la publica en GitHub Container Registry (`ghcr.io`).
+2. **Build & Push:** builda la imagen y la publica en Docker Hub.
 3. **Deploy:** se conecta por SSH a la instancia de aplicación y levanta el contenedor apuntando a la base de datos, usando secrets del repositorio (`EC2_APP_HOST`, `EC2_SSH_USER`, `EC2_SSH_KEY`, `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_ISSUER_URI`, `RABBITMQ_HOST`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`).
 
 ### Estructura del Proyecto

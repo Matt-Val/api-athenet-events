@@ -61,3 +61,7 @@ Configurar PostgreSQL, Entra y las propiedades RabbitMQ del entorno; `RABBITMQ_V
 Una agenda sintética creó `PARTIDO-900001`, produjo `evento.publicado` y fue procesada por Notificaciones. Posteriormente una confirmación auténtica desde BFF y Competencia creó `PARTIDO-1`, PUBLISHED, revisión 1 y delegado real asignado.
 
 La protección HTTP de edición/borrado y las reprogramaciones/cancelaciones están implementadas y cubiertas por pruebas seleccionadas, pero no se completó su ensayo conectado en el cierre mínimo. Tampoco se probó caída del broker durante publicación ni se aplicaron estos SQL a RDS.
+
+## Docker Hub — 2026-10-19
+
+Se preparó la publicación de imágenes en Docker Hub y el despliegue por SSH usando la etiqueta SHA. Las credenciales del registro se configuran mediante `DOCKERHUB_USERNAME` (variable) y `DOCKERHUB_TOKEN` (secret). La preparación no incluye publicación ni despliegue ejecutados.
