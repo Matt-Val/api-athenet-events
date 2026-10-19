@@ -65,6 +65,18 @@ class EventErrorsTest {
     }
 
     @Test
+    void competitionCopyRejectsUpdateAndDeleteWith409() throws Exception {
+        var copy = new EventMapper().toEntity(EventFixtures.match());
+        copy.setCompetitionId(4L); copy.setCompetitionMatchId(31L);
+        when(repository.findByInternalId("EVT-42")).thenReturn(Optional.of(copy));
+        mockMvc.perform(asDirector(put("/api/admin/events/EVT-42"), EventFixtures.MATCH_JSON))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("COMPETITION_EVENT_READ_ONLY"));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/admin/events/EVT-42")
+                .with(jwt().authorities(DIRECTOR_ROLE)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("COMPETITION_EVENT_READ_ONLY"));
+    }
+
+    @Test
     void crearDevuelve201ConLocationYHorasEnFormatoHHmm() throws Exception {
         mockMvc.perform(asDirector(post("/api/admin/events"), EventFixtures.MATCH_JSON))
                 .andExpect(status().isCreated())

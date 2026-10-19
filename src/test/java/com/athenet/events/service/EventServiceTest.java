@@ -86,10 +86,10 @@ class EventServiceTest {
     @Test
     void crearNotificaSoloSiNacePublicado() {
         service.createEvent(EventFixtures.match());
-        verifyNoInteractions(publisher);
+        verify(publisher).changed(isNull(), any(Event.class), eq(false));
 
         service.createEvent(EventFixtures.match(EventStatus.PUBLISHED));
-        verify(publisher).publish(any(Event.class));
+        verify(publisher, times(2)).changed(isNull(), any(Event.class), eq(false));
     }
 
     @Test
@@ -100,7 +100,7 @@ class EventServiceTest {
         service.updateEvent("EVT-42", EventFixtures.match(EventStatus.PUBLISHED));
         service.updateEvent("EVT-42", EventFixtures.match(EventStatus.PUBLISHED));
 
-        verify(publisher, times(1)).publish(existing);
+        verify(publisher, times(2)).changed(any(com.athenet.events.messaging.EventNotificationData.class), eq(existing), eq(false));
     }
 
     @Test

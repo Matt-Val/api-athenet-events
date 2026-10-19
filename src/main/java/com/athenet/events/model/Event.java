@@ -6,7 +6,6 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -23,8 +22,13 @@ import lombok.NoArgsConstructor;
 })
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 public class Event {
+
+    @Column(name = "competition_id") private Long competitionId;
+    @Column(name = "competition_match_id", unique = true) private Long competitionMatchId;
+    @Column(nullable = false) private int scheduleVersion;
+    @Column(nullable = false) private long notificationVersion;
+    @Version private long rowVersion;
     
     // Uso interno en base de datos
     @Id

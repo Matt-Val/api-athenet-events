@@ -41,6 +41,8 @@ public record EventResponse(
         Long teamTwoId,
 
         String delegateOid,
-        String delegateDisplayName
+        String delegateDisplayName,
+        Long competitionId,
+        Long competitionMatchId
 ) {
 }
