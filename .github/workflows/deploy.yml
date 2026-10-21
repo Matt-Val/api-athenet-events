@@ -124,8 +124,8 @@ jobs:
               -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI="$JWT_ISSUER_URI" \
               -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_0="$JWT_AUDIENCE" \
               -e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCES_1="api://${JWT_AUDIENCE}" \
-              -e APP_CORS_PUBLIC_ORIGINS="${CORS_PUBLIC_ORIGINS:-http://localhost:5173,http://localhost:4200}" \
-              -e APP_CORS_ADMIN_ORIGINS="${CORS_ADMIN_ORIGINS:-http://localhost:4200}" \
+              -e APP_CORS_PUBLIC_ORIGINS="${CORS_PUBLIC_ORIGINS:-http://localhost:5173,http://localhost:4200,https://fabetabilo.github.io}" \
+              -e APP_CORS_ADMIN_ORIGINS="${CORS_ADMIN_ORIGINS:-http://localhost:4200,https://fabetabilo.github.io}" \
               -e SPRING_RABBITMQ_HOST="$RABBITMQ_HOST" \
               -e SPRING_RABBITMQ_PORT="5672" \
               -e SPRING_RABBITMQ_VIRTUAL_HOST="/" \
