@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -49,6 +50,13 @@ public class EventService {
 
     public List<EventResponse> getAllPublishedEvents() {
         return toResponses(eventRepository.findByStatusOrderByEventDateAscStartTimeAsc(EventStatus.PUBLISHED));
+    }
+
+    /** Publicados que todavía no terminaron, incluyendo aquellos en curso */
+    public List<EventResponse> getAllNextEvents() {
+        LocalDateTime now = LocalDateTime.now();
+        return toResponses(eventRepository.findNotFinishedByStatusOrderByEventDateAscStartTimeAsc(
+                EventStatus.PUBLISHED, now.toLocalDate(), now.toLocalTime()));
     }
 
     /** Calendario: eventos publicados que ocurren (aunque sea en parte) entre hoy y hoy + daysAhead. */
