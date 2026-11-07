@@ -35,6 +35,16 @@ class MatchProjectionServiceTest {
         verify(events,times(1)).save(any());
         verify(notices,times(1)).changed(any(),any(),eq(false));
     }
+    @Test void finishedMatchTakesItsCopyOutOfThePublicWeb() {
+        when(events.save(any(Event.class))).thenAnswer(call -> call.getArgument(0));
+        service.accept(data(1,"PUBLISHED"));
+        var captor = org.mockito.ArgumentCaptor.forClass(Event.class);
+        verify(events).save(captor.capture());
+        var copy = captor.getValue();
+        when(events.findLockedByCompetitionMatchId(31L)).thenReturn(Optional.of(copy));
+        service.accept(data(2,"FINISHED"));
+        assertThat(copy.getStatus()).isEqualTo(EventStatus.FINISHED);
+    }
     @Test void cancellationBeforeCreationLeavesTombstoneAgainstLatePublication() {
         when(events.save(any(Event.class))).thenAnswer(call -> call.getArgument(0));
         service.accept(data(3,"CANCELLED"));

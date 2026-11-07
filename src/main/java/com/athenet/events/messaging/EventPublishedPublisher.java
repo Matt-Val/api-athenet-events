@@ -16,6 +16,8 @@ public class EventPublishedPublisher {
 
     public void changed(EventNotificationData before, Event event, boolean deleted) {
         var after = EventNotificationData.from(event);
+        // el encuentro (match) finalizado sale de la web, pero no se canceló
+        if ("FINISHED".equals(after.status())) return;
         boolean wasPublished = before != null && "PUBLISHED".equals(before.status());
         boolean isPublished = !deleted && "PUBLISHED".equals(after.status());
         String type;
