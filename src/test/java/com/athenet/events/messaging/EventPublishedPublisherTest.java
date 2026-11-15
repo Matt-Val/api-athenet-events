@@ -38,4 +38,11 @@ class EventPublishedPublisherTest {
         publisher.changed(EventNotificationData.from(event),event,false);
         verifyNoInteractions(writer,messages);
     }
+    @Test void finishingAMatchDoesNotAnnounceACancellation() {
+        var event = new EventMapper().toEntity(EventFixtures.match(EventStatus.PUBLISHED));
+        var before = EventNotificationData.from(event);
+        event.setStatus(EventStatus.FINISHED);
+        publisher.changed(before,event,false);
+        verifyNoInteractions(writer,messages);
+    }
 }

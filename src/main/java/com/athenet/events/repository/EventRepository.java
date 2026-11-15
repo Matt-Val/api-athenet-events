@@ -1,12 +1,15 @@
 package com.athenet.events.repository;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.athenet.events.model.Event;
@@ -42,6 +45,20 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     List<Event> findAllByOrderByEventDateAscStartTimeAsc();
 
     List<Event> findByStatusOrderByEventDateAscStartTimeAsc(EventStatus status);
+
+    /**
+     * Publicados que todavía no terminaron, incluidos los que están en curso.
+     */
+    @Query("""
+            SELECT e FROM Event e
+            WHERE e.status = :status
+              AND (e.endDate > :today OR (e.endDate = :today AND e.endTime >= :nowTime))
+            ORDER BY e.eventDate ASC, e.startTime ASC
+            """)
+    List<Event> findNotFinishedByStatusOrderByEventDateAscStartTimeAsc(
+            @Param("status") EventStatus status,
+            @Param("today") LocalDate today,
+            @Param("nowTime") LocalTime nowTime);
 
     /**
      * Calendario: eventos cuyo rango [eventDate, endDate] se cruza con [from, to].

@@ -17,5 +17,5 @@ public record MatchScheduleEnvelope(@NotBlank String messageId, @NotBlank String
             @NotNull @Positive Long homeTeamId, @NotNull @Positive Long awayTeamId,
             @NotBlank @Pattern(regexp = "[0-9a-fA-F-]{36}") String delegateOid,
             @NotBlank @Size(max = 256) String delegateDisplayName,
-            @NotNull @Pattern(regexp = "PUBLISHED|CANCELLED") String status) {}
+            @NotNull @Pattern(regexp = "PUBLISHED|CANCELLED|FINISHED") String status) {}
 }

@@ -21,7 +21,7 @@ import org.mockito.ArgumentCaptor;
 @EnabledIfSystemProperty(named = "events.contract.competition-source", matches = ".+")
 class ScheduleProducerContractTest {
     @TempDir Path classes;
-    @Test void publishedAndCancelledSnapshotsAreAcceptedByRealListener() throws Exception {
+    @Test void publishedCancelledAndFinishedSnapshotsAreAcceptedByRealListener() throws Exception {
         var root = Path.of(System.getProperty("events.contract.competition-source"))
                 .toAbsolutePath().resolve("src/main/java/com/athenet/competition");
         var args = new ArrayList<>(List.of("javac","--release","25","-encoding","UTF-8","-classpath",
@@ -70,8 +70,16 @@ class ScheduleProducerContractTest {
             when(repoType.getMethod("findByRoutingKeyAndAggregateIdAndRevision",String.class,Long.class,int.class)
                     .invoke(repository,"partido.actualizado",31L,1)).thenReturn(Optional.of(stored));
             publisherType.getMethod("cancel",match.getClass()).invoke(publisher,match);
+            // finish reenvía el último snapshot con FINISHED: el listener real tiene que aceptarlo
+            set(match,"ScheduleConfirmed",boolean.class,true);
             calls = new ArrayList<>(mockingDetails(writer).getInvocations());
-            assertThat(calls).hasSize(2);
+            Object latest = instance(loader,"model.OutboxMessage");
+            set(latest,"Payload",String.class,mapper.writeValueAsString(calls.get(1).getArgument(3)));
+            when(repoType.getMethod("findByRoutingKeyAndAggregateIdAndRevision",String.class,Long.class,int.class)
+                    .invoke(repository,"partido.actualizado",31L,2)).thenReturn(Optional.of(latest));
+            publisherType.getMethod("finish",match.getClass()).invoke(publisher,match);
+            calls = new ArrayList<>(mockingDetails(writer).getInvocations());
+            assertThat(calls).hasSize(3);
             var projections = mock(MatchProjectionService.class);
             var listener = new MatchScheduleListener(mapper,validators.getValidator(),projections);
             for (var call : calls) {
@@ -79,9 +87,10 @@ class ScheduleProducerContractTest {
                 listener.receive(new Message(mapper.writeValueAsBytes(call.getArgument(3)),new MessageProperties()));
             }
             var accepted = ArgumentCaptor.forClass(MatchScheduleEnvelope.Data.class);
-            verify(projections,times(2)).accept(accepted.capture());
-            assertThat(accepted.getAllValues()).extracting(MatchScheduleEnvelope.Data::status).containsExactly("PUBLISHED","CANCELLED");
-            assertThat(accepted.getAllValues()).extracting(MatchScheduleEnvelope.Data::scheduleVersion).containsExactly(1,2);
+            verify(projections,times(3)).accept(accepted.capture());
+            assertThat(accepted.getAllValues()).extracting(MatchScheduleEnvelope.Data::status)
+                    .containsExactly("PUBLISHED","CANCELLED","FINISHED");
+            assertThat(accepted.getAllValues()).extracting(MatchScheduleEnvelope.Data::scheduleVersion).containsExactly(1,2,3);
             assertThat(accepted.getValue().endDate()).isEqualTo("2026-10-25");
         }
     }

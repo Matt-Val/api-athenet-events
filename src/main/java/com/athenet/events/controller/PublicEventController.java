@@ -3,6 +3,9 @@ package com.athenet.events.controller;
 import com.athenet.events.dto.EventResponse;
 import com.athenet.events.model.EventStatus;
 import com.athenet.events.service.EventService;
+
+import jakarta.websocket.Endpoint;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -21,10 +24,16 @@ public class PublicEventController {
         this.eventService = eventService;
     }
 
-    // Endpoint para listar todos los eventos publicados (catálogo de eventos)
+    // Endpoint para listar todos los eventos publicados
     @GetMapping
     public ResponseEntity<List<EventResponse>> getAllPublishedEvents() {
         return ResponseEntity.ok(eventService.getAllPublishedEvents());
+    }
+
+    // Catálogo público: los eventos publicados sin terminar, incluidos los en curso.
+    @GetMapping("/all-next")
+    public ResponseEntity<List<EventResponse>> getAllNextEvents() {
+        return ResponseEntity.ok(eventService.getAllNextEvents());
     }
 
     // Endpoint para listar los próximos eventos publicados (Top 10, del más cercano al más lejano)
